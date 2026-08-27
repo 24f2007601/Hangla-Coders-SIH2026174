@@ -1,0 +1,26 @@
+video:
+  source: 0            # camera index or path to a video file
+  width: 1280
+  height: 720
+  target_fps: 30
+
+pose:
+  model: mediapipe     # mediapipe | dummy
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  with_hands: true
+
+classifier:
+  model_type: dummy    # dummy | xgboost
+  model_path: models/step_classifier.json
+  confidence_threshold: 0.5
+
+database:
+  url: sqlite:///data/project.db   # reserved for SQLite backend; PoC uses JSON session logs
+  output_dir: data/processed
+
+pipeline:
+  sequence_length: 30              # feature window size (frames)
+  classify_hop: 5                  # frames between classifier evaluations
+  smoothing_window: 5              # majority-vote smoothing over recent labels
+  max_fps: 30                      # soft cap to keep the UI responsive

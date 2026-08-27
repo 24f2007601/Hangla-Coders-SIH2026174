@@ -1,0 +1,41 @@
+# Environment
+.venv/
+venv/
+.env
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Datasets & raw media (never commit)
+data/raw/*
+data/processed/*
+data/samples/*
+data/*.db
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/samples/.gitkeep
+
+# Trained artifacts / model binaries
+models/*
+!models/.gitkeep
+
+# Notebooks
+notebooks/*.ipynb_checkpoints/
+*.ipynb
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
