@@ -69,6 +69,10 @@ If any step fails → fix it before proceeding. Never leave a failing gate.
 - Live webcam + MediaPipe not tested on hardware
 - YOLO fine-tuning, voice alerts, ONNX export, streaming — all deferred (per ADR-0001)
 
+## What Is DONE (do not claim otherwise)
+
+- Live webcam + MediaPipe tested on hardware
+  
 ---
 
 ## Git Convention
