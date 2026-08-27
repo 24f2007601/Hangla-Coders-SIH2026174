@@ -301,4 +301,27 @@ The PoC is **done** when:
 
 ## Status
 
-Everything above is the *plan* for the 5-day PoC. The repo currently contains planning docs, this repo setup (`AGENTS.md`, `CONTEXT.md`, `docs/adr/`, `docs/*.md`, `.agents/`, `.opencode/`). No implementation code exists yet — the scaffold itself is the first build task. Never present planned capabilities as implemented.
+The **5-day PoC scaffold is implemented and tested** (completed in the initial build run). Everything above this section is the target plan; the current concrete state:
+
+### Implemented (`src/bas_assistant/`)
+- Full modular pipeline: frame → detection (stub) → tracking (stub) → pose → normalization → features → step classification → FSM validation → event/JSONL record (`pipeline/`, `detection/`, `tracking/`, `pose/`, `features/`, `classification/`, `validation/`, `events/`, `storage/`).
+- Protocol-based replaceable interfaces (`protocols.py`) and standardized, model-independent `PoseResult` (`models.py`).
+- MediaPipe Pose + Hands estimators with a deterministic `DummyPoseEstimator` fallback (`pose/estimation.py`).
+- Translation/scale normalization (`pose/normalization.py`), 34-dim spatial+temporal window features (`features/extractor.py`).
+- `DummyClassifier` and `XGBoostStepClassifier` wrapper (graceful fallback to `unknown` when no model file exists) (`classification/`).
+- Deterministic 7-step "Sample Analysis" FSM (`validation/`), thread-safe `EventManager`, JSON-lines session log (`storage/repository.py`).
+- Typed Pydantic settings (`config/settings.py`), PySide6 dashboard (`ui/dashboard.py`).
+- Entry points: `scripts/run_pipeline.py`, `run_demo.py`, `run_dashboard.py`, `benchmark.py`.
+
+### Tested
+- `pytest`: **49 tests pass** offline on CPU, including the no-GPU/no-camera integration test and the skip-Step-3 scenario.
+- `ruff check .` and `black --check src scripts tests` pass.
+- `pip install -e .` clean; `uv sync` exercised in CI (`.github/workflows/ci.yml`).
+- `run_pipeline.py --source dummy --pose dummy` writes a JSONL session log; benchmark and dashboard smoke-tested.
+
+### Not yet done (deferred / planned)
+- **Step-classifier training** is the bottleneck and has not started: no dataset recorded, no XGBoost model trained (`classifier.model_type` defaults to `dummy`).
+- Live webcam + MediaPipe run not yet exercised on hardware (no camera verified on the dev machine; dashboard verified offscreen only).
+- YOLO fine-tuning, orientation-agnostic 3D HMR, voice alerts, streaming, ONNX edge export, SQLite backend — all deferred per ADR-0001.
+
+Per the reporting-integrity rule: nothing above is a performance/accuracy claim — no FPS, latency, or accuracy numbers are asserted as product results. See `docs/success-criteria.md` for the acceptance-criteria status and `README.md` for the Implemented/Not-Yet-Implemented list.

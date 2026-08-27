@@ -10,6 +10,22 @@
 6. The FSM correctly produces `confirmed` / `skipped` / `repeated` / `out-of-sequence` outcomes on the toy protocol, demoed via the skip-Step-3 scenario.
 7. README accurately reflects what is and is not implemented.
 
+## Acceptance-criteria status (current)
+
+Updated after the initial scaffold run. Status labels per `docs/standards.md` (Implemented / Tested / Planned / Proposed / Target / Assumption).
+
+| # | Criterion | Status | Evidence |
+|---|---|---|---|
+| 1 | Installs and imports cleanly | **Tested** | `pip install -e .` clean; `uv sync` exercised in CI |
+| 2 | `pytest` passes incl. no-GPU/no-camera integration test | **Tested** | 49 tests pass on CPU offline |
+| 3 | Dummy pipeline executes end-to-end | **Tested** | `run_pipeline.py --source dummy --pose dummy` → JSONL session log |
+| 4 | `run_demo.py` starts correctly | **Tested** (dummy/synthetic source) | `--source dummy` ran 40 frames; webcam path not verified (no camera on dev machine) |
+| 5 | Full vertical slice: webcam → pose → features → XGBoost → FSM → log → GUI | **Partially tested** | FSM → JSONL → GUI verified with dummy + scripted classifier; XGBoost **not trained**; live webcam + MediaPipe not run |
+| 6 | FSM produces confirmed/skipped/out-of-sequence (skip-Step-3) | **Tested** | `tests/unit/test_fsm.py`, `tests/integration/test_vertical_slice.py` |
+| 7 | README accurately reflects Implemented vs Not-Yet-Implemented | **Implemented** | `README.md` |
+
+**Next bottleneck:** the step-classifier training dataset (record → MediaPipe-extract features → train XGBoost). Nothing in the table above is an accuracy/FPS/latency claim.
+
 ## Demo scenario (the graded centerpiece)
 
 The **skip-step** scenario proves the product's core differentiator — protocol-aware validation, not generic HAR:

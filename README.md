@@ -6,6 +6,8 @@ An offline, camera-based AI assistant observes an astronaut performing a predefi
 
 This is **protocol-aware** activity recognition, not generic HAR: the system asks *"What experiment step is being performed, is it valid at this point, and what should happen next?"*
 
+**Project status:** PoC scaffold **implemented and tested** (49 tests, ruff/black clean, `run_pipeline.py` end-to-end). Next bottleneck: record the toy-protocol dataset and train the step classifier. Full status in `AGENTS.md` → Status; acceptance-criteria status in `docs/success-criteria.md`.
+
 ## Architecture
 
 ```mermaid

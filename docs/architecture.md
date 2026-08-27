@@ -68,6 +68,23 @@ camera/video
 
 Each stage is a replaceable component behind a `Protocol`. The step classifier receives a **standardized feature/sequence representation**, never MediaPipe internals. `PoseResult` keypoints are model-independent.
 
+### PoC implementation status
+
+The modular pipeline above is **implemented** in `src/bas_assistant/` (see `AGENTS.md` → Status). Component status (per `docs/standards.md` labels):
+
+| Stage | Status | Note |
+|---|---|---|
+| Video input | Implemented | OpenCV webcam/file + `DummyVideoSource` |
+| Detection / tracking | Implemented (stub) | Full-frame stub; YOLO fine-tune deferred |
+| Pose estimation | Implemented | MediaPipe (frozen) + `DummyPoseEstimator` fallback |
+| Normalization | Implemented | Translation + scale only; orientation-agnostic 3D HMR is **not** claimed |
+| Feature extraction | Implemented | 34-dim spatial + temporal window vector |
+| Step classifier | Implemented (wrapper) | `DummyClassifier` default; `XGBoostStepClassifier` loads a trained model when present — **none trained yet** |
+| Sequence validator | Implemented | Deterministic 7-step FSM; skip-step scenario tested |
+| Events / storage | Implemented | Thread-safe `EventManager`; JSONL session log |
+| GUI | Implemented | PySide6 dashboard; verified offscreen (no camera on dev machine) |
+| SQLite backend, voice, streaming, ONNX | Not started | Deferred per ADR-0001 |
+
 ## Component contracts
 
 Define abstract protocols wherever a component may be replaced:

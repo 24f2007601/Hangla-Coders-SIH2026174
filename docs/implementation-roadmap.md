@@ -16,10 +16,10 @@ Only **step classification** is real ML. Detection and pose are solved problems 
 
 ## PoC first (Days 1–5)
 
-1. Scaffold the repo (structure, interfaces, config, tests, CI, README).
-2. Build the vertical slice: webcam → MediaPipe → features → XGBoost → FSM → JSON log → PySide6 GUI.
-3. Record the toy-protocol dataset and train the step classifier (start this first — it is the bottleneck).
-4. Demo the skip-step-3 scenario.
+1. Scaffold the repo (structure, interfaces, config, tests, CI, README). — **Done**
+2. Build the vertical slice: webcam → MediaPipe → features → XGBoost → FSM → JSON log → PySide6 GUI. — **Implemented** (real pipeline components; step classifier still `dummy` — no trained model yet). Live webcam + MediaPipe run pending on hardware.
+3. Record the toy-protocol dataset and train the step classifier (start this first — it is the bottleneck). — **Not started**; next task.
+4. Demo the skip-step-3 scenario. — **Validated in tests** (integration + FSM unit tests); live webcam demo pending.
 
 ## Full build plan (to Sept 20)
 
