@@ -60,6 +60,86 @@ uv sync --extra ui      # + PySide6 (for the dashboard)
 
 `pip install -e ".[ml,ui,dev]"` is an equivalent fallback.
 
+## Set up on your own machine
+
+Fork or clone the repo, then get a working dev or demo environment. Everything below is verified against a clean checkout (Python 3.11+, Linux).
+
+### Prerequisites
+
+- Python 3.11+ (`python3 --version`)
+- `git`
+- `uv` (one-time install, then restart your shell):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 1. Clone (or fork, then clone your fork)
+
+```bash
+git clone <your-fork-or-repo-url>
+cd <repo-dir>
+```
+
+### 2. Install dependencies
+
+```bash
+uv sync --all-extras       # everything: base + ml + ui + dev (recommended)
+# or only what you need:
+uv sync                    # base + dev
+uv sync --extra ml         # + XGBoost / scikit-learn / mediapipe
+uv sync --extra ui         # + PySide6 dashboard
+```
+
+No `uv`? Equivalent pip fallback:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[all]"
+```
+
+### 3. Verify the environment
+
+```bash
+uv run python -c "import bas_assistant; print('OK')"
+uv run pytest                            # 49 tests, offline, CPU-only
+uv run ruff check .
+uv run black --check src scripts tests
+```
+
+### 4. Run a demo (no webcam required)
+
+```bash
+uv run python scripts/run_pipeline.py --source dummy --pose dummy --max-frames 300
+uv run python scripts/run_demo.py --source dummy --pose dummy --max-frames 300
+```
+
+For a live webcam run, drop `--source dummy` (use `--source 0`). The PySide6 dashboard needs a real camera or a video file: `uv run python scripts/run_dashboard.py --source 0`.
+
+### Troubleshooting
+
+- **No webcam / camera permission denied** → use `--source dummy --pose dummy`. The pipeline and interactive demo run fully offline; only the dashboard requires a camera or video file.
+- **`uv sync` errors** → delete `uv.lock` and re-run `uv sync --all-extras`.
+- **MediaPipe import errors** → make sure you are inside the project venv (use `uv run`, not a system Python).
+
+### AI-agent one-shot setup prompt
+
+Paste this into your AI agent (opencode, Copilot, Claude Code, ...) to set up the environment hands-free:
+
+```text
+Set up this repo for local development/demo following README.md "Set up on
+your own machine", AGENTS.md, and pyproject.toml:
+1. Ensure Python 3.11+ is available.
+2. Install `uv` if missing (curl -LsSf https://astral.sh/uv/install.sh | sh).
+3. Run `uv sync --all-extras` (pip fallback: `pip install -e ".[all]"`).
+4. Verify that `uv run pytest`, `uv run ruff check .`, and
+   `uv run black --check src scripts tests` all pass.
+5. Smoke-run `uv run python scripts/run_pipeline.py --source dummy --pose
+   dummy --max-frames 50` and confirm it writes a JSONL session log.
+Do not report success unless the tests pass and the pipeline writes a
+session log. Report installed package versions and any errors verbatim.
+```
+
 ## Running
 
 ```bash
