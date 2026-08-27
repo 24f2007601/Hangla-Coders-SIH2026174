@@ -23,6 +23,8 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
     """Assemble an ExperimentPipeline from typed settings (all real PoC components)."""
     if settings.pose.model == "mediapipe":
         pose_estimator = MediaPipePoseEstimator(
+            pose_model_path=settings.pose.pose_model_path,
+            hand_model_path=settings.pose.hand_model_path,
             min_detection_confidence=settings.pose.min_detection_confidence,
             min_tracking_confidence=settings.pose.min_tracking_confidence,
             with_hands=settings.pose.with_hands,

@@ -25,6 +25,8 @@ class VideoConfig(BaseModel):
 
 class PoseConfig(BaseModel):
     model: Literal["mediapipe", "dummy"] = "mediapipe"
+    pose_model_path: Path = Path("models/pose_landmarker_lite.task")
+    hand_model_path: Path = Path("models/hand_landmarker.task")
     min_detection_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     min_tracking_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     with_hands: bool = True
