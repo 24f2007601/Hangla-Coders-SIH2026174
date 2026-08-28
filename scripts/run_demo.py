@@ -118,7 +118,7 @@ def main() -> int:
             annotated = annotate_frame(
                 frame, result.pose, step_name, confidence, result.fps, status
             )
-            cv2.imshow("BAS Experiment Assistant — Demo", annotated)
+            cv2.imshow("BAS Experiment Assistant - Demo", annotated)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
