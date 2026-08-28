@@ -15,13 +15,31 @@ _STEP_COLORS = {
 }
 
 _HAND_CONNECTIONS = (
-    (0, 1), (1, 2), (2, 3), (3, 4),
-    (0, 5), (5, 6), (6, 7), (7, 8),
-    (0, 9), (9, 10), (10, 11), (11, 12),
-    (0, 13), (13, 14), (14, 15), (15, 16),
-    (0, 17), (17, 18), (18, 19), (19, 20),
-    (5, 9), (9, 13), (13, 17),
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 4),
+    (0, 5),
+    (5, 6),
+    (6, 7),
+    (7, 8),
+    (0, 9),
+    (9, 10),
+    (10, 11),
+    (11, 12),
+    (0, 13),
+    (13, 14),
+    (14, 15),
+    (15, 16),
+    (0, 17),
+    (17, 18),
+    (18, 19),
+    (19, 20),
+    (5, 9),
+    (9, 13),
+    (13, 17),
 )
+
 
 def draw_pose(
     frame: np.ndarray, pose: PoseResult, color: tuple[int, int, int] = (80, 200, 80)
@@ -34,7 +52,7 @@ def draw_pose(
         cv2.line(frame, tuple(pts[a]), tuple(pts[b]), color, 2)
     for x, y in pts:
         cv2.circle(frame, (int(x), int(y)), 2, color, -1)
-    draw_hands(frame, pose)
+
 
 def draw_hands(
     frame: np.ndarray,
@@ -77,6 +95,7 @@ def draw_hands(
                 color,
                 -1,
             )
+
 
 def draw_label(
     frame: np.ndarray,
