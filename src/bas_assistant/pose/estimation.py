@@ -1,9 +1,15 @@
-"""Pose estimation backends: MediaPipe (pretrained, frozen) and a deterministic dummy."""
+"""Pose estimation backends: MediaPipe (pretrained, frozen) and a deterministic dummy.
+
+MediaPipe is used through the current **Tasks API** (`PoseLandmarker` +
+`HandLandmarker`), not the removed legacy `mp.solutions` API. Tasks API models are
+bundled as `.task` files — see `scripts/download_mediapipe_models.py`.
+"""
 
 from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -20,7 +26,8 @@ class PoseEstimatorUnavailableError(RuntimeError):
 class MediaPipePoseEstimator:
     """MediaPipe Pose (+ optional Hands), pretrained and frozen.
 
-    Keypoints are converted to pixel coordinates and stored in the canonical
+    Backed by the Tasks API `PoseLandmarker` / `HandLandmarker` running in VIDEO
+    mode. Keypoints are converted to pixel coordinates and stored in the canonical
     MediaPipe 33-point order (see `pose.landmarks`). Hand landmarks (21 per hand)
     are attached to `PoseResult.metadata["hands"]` so feature extraction can use
     hand-object interaction signals without seeing MediaPipe types.
@@ -28,46 +35,70 @@ class MediaPipePoseEstimator:
 
     def __init__(
         self,
+        pose_model_path: Path = Path("models/pose_landmarker_lite.task"),
+        hand_model_path: Path = Path("models/hand_landmarker.task"),
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
         with_hands: bool = True,
     ) -> None:
         try:
             import mediapipe as mp
+            from mediapipe.tasks import python as mp_tasks
+            from mediapipe.tasks.python import vision
         except ImportError as exc:  # pragma: no cover - depends on install
             raise PoseEstimatorUnavailableError(
                 "mediapipe is not installed. Install the 'ml' extra or set pose.model=dummy."
             ) from exc
 
-        self._pose = mp.solutions.pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-        )
-        self._hands = (
-            mp.solutions.hands.Hands(
-                static_image_mode=False,
-                max_num_hands=2,
-                min_detection_confidence=min_detection_confidence,
+        if not Path(pose_model_path).exists():
+            raise PoseEstimatorUnavailableError(
+                f"MediaPipe pose model not found at {pose_model_path}. Run "
+                "`python scripts/download_mediapipe_models.py` or set pose.model=dummy."
+            )
+
+        self._mp = mp
+        self._vision = vision
+        self._pose = vision.PoseLandmarker.create_from_options(
+            vision.PoseLandmarkerOptions(
+                base_options=mp_tasks.BaseOptions(model_asset_path=str(pose_model_path)),
+                running_mode=vision.RunningMode.VIDEO,
+                num_poses=1,
+                min_pose_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
             )
-            if with_hands
-            else None
         )
+        self._hands = None
+        if with_hands:
+            if not Path(hand_model_path).exists():
+                raise PoseEstimatorUnavailableError(
+                    f"MediaPipe hand model not found at {hand_model_path}. Run "
+                    "`python scripts/download_mediapipe_models.py` or set pose.with_hands=false."
+                )
+            self._hands = vision.HandLandmarker.create_from_options(
+                vision.HandLandmarkerOptions(
+                    base_options=mp_tasks.BaseOptions(model_asset_path=str(hand_model_path)),
+                    running_mode=vision.RunningMode.VIDEO,
+                    num_hands=2,
+                    min_hand_detection_confidence=min_detection_confidence,
+                    min_tracking_confidence=min_tracking_confidence,
+                )
+            )
+        self._frame_ts_ms = 0
         logger.info("Initialized MediaPipe pose estimator (hands=%s)", with_hands)
 
     def estimate(self, frame: np.ndarray) -> PoseResult | None:
         rgb = cv2_cvt_bgr_to_rgb(frame)
         ts = time.time()
+        self._frame_ts_ms += 33  # strictly increasing timestamp required by VIDEO mode
+        image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
 
-        pose_out = self._pose.process(rgb)
-        if pose_out is None or pose_out.pose_landmarks is None:
+        pose_out = self._pose.detect_for_video(image, self._frame_ts_ms)
+        if pose_out is None or not pose_out.pose_landmarks:
             return None
 
         height, width = frame.shape[:2]
         keypoints: list[Keypoint] = []
-        for lm in pose_out.pose_landmarks.landmark:
+        for lm in pose_out.pose_landmarks[0]:
             keypoints.append(Keypoint(x=lm.x * width, y=lm.y * height, confidence=lm.visibility))
 
         x_vals = [k.x for k in keypoints]
@@ -82,7 +113,7 @@ class MediaPipePoseEstimator:
 
         metadata: dict = {}
         if self._hands is not None:
-            hands_out = self._hands.process(rgb)
+            hands_out = self._hands.detect_for_video(image, self._frame_ts_ms)
             metadata["hands"] = self._extract_hands(hands_out, width, height)
 
         return PoseResult(
@@ -96,15 +127,16 @@ class MediaPipePoseEstimator:
 
     @staticmethod
     def _extract_hands(hands_out, width: int, height: int) -> list[dict]:
-        if hands_out is None or not hands_out.multi_hand_landmarks:
+        if hands_out is None or not hands_out.hand_landmarks:
             return []
         hands: list[dict] = []
         for hand_landmarks, handedness in zip(
-            hands_out.multi_hand_landmarks, hands_out.multi_handedness, strict=False
+            hands_out.hand_landmarks, hands_out.handedness, strict=False
         ):
-            if handedness.classification:
-                label = str(handedness.classification[0].label)
-                score = float(handedness.classification[0].score)
+            categories = handedness if isinstance(handedness, list) else handedness.categories
+            if categories:
+                label = str(categories[0].category_name)
+                score = float(categories[0].score)
             else:
                 label = "Unknown"
                 score = 1.0
@@ -112,9 +144,7 @@ class MediaPipePoseEstimator:
                 {
                     "handedness": label,
                     "confidence": score,
-                    "keypoints": [
-                        {"x": lm.x * width, "y": lm.y * height} for lm in hand_landmarks.landmark
-                    ],
+                    "keypoints": [{"x": lm.x * width, "y": lm.y * height} for lm in hand_landmarks],
                 }
             )
         return hands

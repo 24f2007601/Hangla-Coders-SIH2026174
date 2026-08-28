@@ -318,10 +318,50 @@ The **5-day PoC scaffold is implemented and tested** (completed in the initial b
 - `ruff check .` and `black --check src scripts tests` pass.
 - `pip install -e .` clean; `uv sync` exercised in CI (`.github/workflows/ci.yml`).
 - `run_pipeline.py --source dummy --pose dummy` writes a JSONL session log; benchmark and dashboard smoke-tested.
+- Tested webcam and media-pipe in hardware
 
 ### Not yet done (deferred / planned)
 - **Step-classifier training** is the bottleneck and has not started: no dataset recorded, no XGBoost model trained (`classifier.model_type` defaults to `dummy`).
-- Live webcam + MediaPipe run not yet exercised on hardware (no camera verified on the dev machine; dashboard verified offscreen only).
 - YOLO fine-tuning, orientation-agnostic 3D HMR, voice alerts, streaming, ONNX edge export, SQLite backend — all deferred per ADR-0001.
+
+## Agent Behavior
+
+The coding agent should avoid unnecessary repository-wide exploration.
+
+### Repository exploration
+
+- Do not scan the entire repository for every user question.
+- Use the current conversation and already-established context first.
+- For questions about a specific feature, inspect only the relevant files.
+- For questions about a specific file, read that file first and inspect related files only when necessary.
+- Before using tools, determine the minimum set of files required to answer the question.
+- If sufficient context is already available, answer without additional repository searches.
+- Perform exhaustive repository analysis only when explicitly requested.
+
+### Files/directories to avoid
+
+Do not inspect these unless explicitly relevant to the user's request:
+
+- `.git/`
+- datasets
+- videos/images
+- model weights
+- generated files
+- cache directories
+- virtual environments
+- `node_modules/`
+
+### Existing documentation
+
+Do not repeatedly reread `README.md`, `AGENTS.md`, `CONTEXT.md`, or the entire `src/` tree once their relevant contents are already understood.
+
+### Implementation discipline
+
+Before making a major architectural change:
+
+1. Explain why it is necessary.
+2. Identify the specific problem it solves.
+3. Prefer the simplest solution that satisfies the requirement.
+4. Avoid modifying unrelated files.
 
 Per the reporting-integrity rule: nothing above is a performance/accuracy claim — no FPS, latency, or accuracy numbers are asserted as product results. See `docs/success-criteria.md` for the acceptance-criteria status and `README.md` for the Implemented/Not-Yet-Implemented list.

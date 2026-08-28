@@ -44,6 +44,7 @@ Each stage sits behind a Python `Protocol` (`src/bas_assistant/protocols.py`) so
 ## Not yet implemented
 
 - **Trained step classifier.** No model is trained; the pipeline defaults to the dummy classifier (`classifier.model_type: dummy`). Training is the dataset bottleneck (see `docs/implementation-roadmap.md`).
+- MediaPipe `.task` model files are not committed (gitignored); download them with `scripts/download_mediapipe_models.py` for real pose.
 - YOLO object detection fine-tuning (detection is a full-frame stub; hand-object interaction signals come from MediaPipe hands).
 - Orientation-agnostic 3D human mesh recovery (normalization is translation/scale only).
 - Voice alerts (pyttsx3), IP/RTSP streaming, ONNX edge export, SQLite/SQLAlchemy backend.
@@ -98,7 +99,18 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
 ```
 
-### 3. Verify the environment
+### 3. Download MediaPipe model files (for real pose)
+
+The MediaPipe pose + hand estimators use the current Tasks API, which reads `.task`
+model bundles from `models/` (gitignored). Fetch them once:
+
+```bash
+uv run python scripts/download_mediapipe_models.py
+```
+
+Skip this if you only run with `--pose dummy`.
+
+### 4. Verify the environment
 
 ```bash
 uv run python -c "import bas_assistant; print('OK')"
@@ -107,7 +119,7 @@ uv run ruff check .
 uv run black --check src scripts tests
 ```
 
-### 4. Run a demo (no webcam required)
+### 5. Run a demo (no webcam required)
 
 ```bash
 uv run python scripts/run_pipeline.py --source dummy --pose dummy --max-frames 300

@@ -26,6 +26,19 @@ def draw_pose(
         cv2.line(frame, tuple(pts[a]), tuple(pts[b]), color, 2)
     for x, y in pts:
         cv2.circle(frame, (int(x), int(y)), 2, color, -1)
+    draw_hands(frame, pose)
+
+
+def draw_hands(
+    frame: np.ndarray, pose: PoseResult, color: tuple[int, int, int] = (0, 200, 255)
+) -> None:
+    """Draw hand landmarks (21 per hand) from pose.metadata['hands']."""
+    for hand in (pose.metadata or {}).get("hands", []):
+        pts = [(int(k["x"]), int(k["y"])) for k in hand.get("keypoints", [])]
+        for x, y in pts:
+            cv2.circle(frame, (x, y), 2, color, -1)
+        for i in range(len(pts) - 1):
+            cv2.line(frame, pts[i], pts[i + 1], color, 1)
 
 
 def draw_label(
@@ -56,4 +69,4 @@ def annotate_frame(
     return out
 
 
-__all__ = ["annotate_frame", "draw_label", "draw_pose"]
+__all__ = ["annotate_frame", "draw_hands", "draw_label", "draw_pose"]
