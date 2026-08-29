@@ -7,8 +7,8 @@ import pytest
 
 from bas_assistant.features.extractor import (
     FEATURE_VECTOR_SIZE,
-    SPATIAL_FEATURES,
     HAND_FEATURES,
+    SPATIAL_FEATURES,
     TEMPORAL_FEATURES,
     PoseFeatureExtractor,
 )

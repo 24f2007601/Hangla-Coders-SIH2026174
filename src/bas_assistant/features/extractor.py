@@ -15,8 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from bas_assistant.features.window import FeatureWindow
 from bas_assistant.features.hands import palm_center
+from bas_assistant.features.window import FeatureWindow
 from bas_assistant.models import PoseResult
 from bas_assistant.pose.landmarks import (
     LEFT_ELBOW,
