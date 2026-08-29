@@ -8,6 +8,7 @@ bundled as `.task` files — see `scripts/download_mediapipe_models.py`.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import numpy as np
 
 from bas_assistant.models import BoundingBox, Keypoint, PoseResult
 from bas_assistant.pose.landmarks import NUM_KEYPOINTS
+from bas_assistant.utils.timing import Metrics
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +26,19 @@ class PoseEstimatorUnavailableError(RuntimeError):
 
 
 class MediaPipePoseEstimator:
-    """MediaPipe Pose (+ optional Hands), pretrained and frozen.
+    """MediaPipe Pose + Hands, pretrained and frozen.
 
-    Backed by the Tasks API `PoseLandmarker` / `HandLandmarker` running in VIDEO
-    mode. Keypoints are converted to pixel coordinates and stored in the canonical
-    MediaPipe 33-point order (see `pose.landmarks`). Hand landmarks (21 per hand)
-    are attached to `PoseResult.metadata["hands"]` so feature extraction can use
+    Pose runs synchronously on the calling thread (VIDEO mode). Hand inference runs
+    on a dedicated worker thread in VIDEO mode too, so its ROI tracking — which
+    carries a detected hand through frames where the palm detector momentarily
+    fails — stays intact, while its cost never throttles the pose/frame loop. The
+    main loop always hands the worker the newest frame (stale frames are replaced)
+    and reads back the worker's latest result. A short output hold debounces
+    residual one-off misses so markers do not flicker.
+
+    Keypoints are converted to pixel coordinates in the canonical MediaPipe
+    33-point order (see `pose.landmarks`). Hand landmarks (21 per hand) are
+    attached to `PoseResult.metadata["hands"]` so feature extraction can use
     hand-object interaction signals without seeing MediaPipe types.
     """
 
@@ -39,6 +48,10 @@ class MediaPipePoseEstimator:
         hand_model_path: Path = Path("models/hand_landmarker.task"),
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
+        min_hand_detection_confidence: float = 0.3,
+        min_hand_presence_confidence: float = 0.4,
+        min_hand_tracking_confidence: float = 0.4,
+        hand_hold_seconds: float = 0.5,
         with_hands: bool = True,
     ) -> None:
         try:
@@ -58,6 +71,7 @@ class MediaPipePoseEstimator:
 
         self._mp = mp
         self._vision = vision
+        self._metrics = Metrics()
         self._pose = vision.PoseLandmarker.create_from_options(
             vision.PoseLandmarkerOptions(
                 base_options=mp_tasks.BaseOptions(model_asset_path=str(pose_model_path)),
@@ -68,6 +82,17 @@ class MediaPipePoseEstimator:
             )
         )
         self._hands = None
+        self._hands_slot: np.ndarray | None = None
+        self._hands_slot_lock = threading.Lock()
+        self._hands_pending = threading.Event()
+        self._hands_thread: threading.Thread | None = None
+        self._hands_cache: object | None = None
+        self._hands_lock = threading.Lock()
+        self._hands_stop = threading.Event()
+        self._last_hands_ts_ms = 0
+        self._hand_hold_seconds = max(hand_hold_seconds, 0.0)
+        self._last_detected: list[dict] = []
+        self._last_detected_ts = 0.0
         if with_hands:
             if not Path(hand_model_path).exists():
                 raise PoseEstimatorUnavailableError(
@@ -79,20 +104,97 @@ class MediaPipePoseEstimator:
                     base_options=mp_tasks.BaseOptions(model_asset_path=str(hand_model_path)),
                     running_mode=vision.RunningMode.VIDEO,
                     num_hands=2,
-                    min_hand_detection_confidence=min_detection_confidence,
-                    min_tracking_confidence=min_tracking_confidence,
+                    min_hand_detection_confidence=min_hand_detection_confidence,
+                    min_hand_presence_confidence=min_hand_presence_confidence,
+                    min_tracking_confidence=min_hand_tracking_confidence,
                 )
             )
-        self._frame_ts_ms = 0
-        logger.info("Initialized MediaPipe pose estimator (hands=%s)", with_hands)
+            self._hands_thread = threading.Thread(
+                target=self._hand_worker, name="hand-landmarker", daemon=True
+            )
+            self._hands_thread.start()
+        self._last_ts_ms = 0
+        logger.info(
+            "Initialized MediaPipe pose estimator (hands=%s, hold=%.1fs)",
+            with_hands,
+            self._hand_hold_seconds,
+        )
+
+    def close(self) -> None:
+        """Signal the hand worker thread to stop and join it briefly."""
+        if self._hands_thread is not None:
+            self._hands_stop.set()
+            self._hands_pending.set()
+            self._hands_thread.join(timeout=2.0)
+            self._hands_thread = None
+
+    @property
+    def metrics(self) -> Metrics:
+        """Timing metrics for pose and hands inference (diagnostics)."""
+        return self._metrics
+
+    def _next_timestamp_ms(self, last: int) -> int:
+        """Strictly-increasing monotonic timestamp (ms) for VIDEO-mode detect calls."""
+        now = int(time.monotonic() * 1000)
+        if now <= last:
+            now = last + 1
+        return now
+
+    def _next_hands_timestamp_ms(self) -> int:
+        self._last_hands_ts_ms = self._next_timestamp_ms(self._last_hands_ts_ms)
+        return self._last_hands_ts_ms
+
+    def _hand_worker(self) -> None:
+        """Consume the newest frame and cache the latest hand-landmark result."""
+        while not self._hands_stop.is_set():
+            if not self._hands_pending.wait(timeout=0.1):
+                continue
+            with self._hands_slot_lock:
+                rgb = self._hands_slot
+                self._hands_slot = None
+                self._hands_pending.clear()
+            if rgb is None:
+                continue
+            try:
+                image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
+                start = time.perf_counter()
+                out = self._hands.detect_for_video(image, self._next_hands_timestamp_ms())
+                self._metrics.record("hands", time.perf_counter() - start)
+                with self._hands_lock:
+                    self._hands_cache = out
+            except Exception:  # noqa: BLE001 - log and keep the worker alive
+                logger.exception("Hand landmarker detection failed")
+
+    def _exposed_hands(self, hands_out, width: int, height: int) -> list[dict]:
+        """Hand landmarks with a debounce hold against one-off detection misses."""
+        current = self._extract_hands(hands_out, width, height)
+        now = time.monotonic()
+        if current:
+            self._last_detected = current
+            self._last_detected_ts = now
+            return current
+        if self._last_detected and now - self._last_detected_ts < self._hand_hold_seconds:
+            return self._last_detected
+        return []
 
     def estimate(self, frame: np.ndarray) -> PoseResult | None:
         rgb = cv2_cvt_bgr_to_rgb(frame)
         ts = time.time()
-        self._frame_ts_ms += 33  # strictly increasing timestamp required by VIDEO mode
+        ts_ms = self._next_timestamp_ms(self._last_ts_ms)
+        self._last_ts_ms = ts_ms
         image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
 
-        pose_out = self._pose.detect_for_video(image, self._frame_ts_ms)
+        hands_out = None
+        if self._hands is not None:
+            with self._hands_slot_lock:
+                self._hands_slot = rgb
+                self._hands_pending.set()
+            with self._hands_lock:
+                hands_out = self._hands_cache
+
+        pose_start = time.perf_counter()
+        pose_out = self._pose.detect_for_video(image, ts_ms)
+        self._metrics.record("pose", time.perf_counter() - pose_start)
         if pose_out is None or not pose_out.pose_landmarks:
             return None
 
@@ -113,8 +215,7 @@ class MediaPipePoseEstimator:
 
         metadata: dict = {}
         if self._hands is not None:
-            hands_out = self._hands.detect_for_video(image, self._frame_ts_ms)
-            metadata["hands"] = self._extract_hands(hands_out, width, height)
+            metadata["hands"] = self._exposed_hands(hands_out, width, height)
 
         return PoseResult(
             timestamp=ts,

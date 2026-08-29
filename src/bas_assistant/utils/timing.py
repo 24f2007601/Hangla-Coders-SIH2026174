@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import statistics
+import threading
 import time
+from collections import deque
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 
 class FPSMeter:
@@ -11,7 +16,7 @@ class FPSMeter:
     def __init__(self, alpha: float = 0.9) -> None:
         self._alpha = alpha
         self._fps = 0.0
-        self._last = None
+        self._last: float | None = None
 
     def tick(self) -> float:
         now = time.perf_counter()
@@ -54,4 +59,72 @@ class LatencyMeter:
         self._ms = 0.0
 
 
-__all__ = ["FPSMeter", "LatencyMeter"]
+class Metrics:
+    """Small thread-safe timing/throughput collector for debug instrumentation.
+
+    Records per-key durations (seconds) into a fixed-size window and exposes
+    windowed mean / last value / inferred FPS plus plain counters. Overhead is a
+    deque append and a lock — negligible, so it can stay enabled for diagnostics.
+    """
+
+    def __init__(self, window: int = 120) -> None:
+        self._window = window
+        self._lock = threading.Lock()
+        self._samples: dict[str, deque[float]] = {}
+        self._counters: dict[str, int] = {}
+
+    def record(self, key: str, seconds: float) -> None:
+        with self._lock:
+            samples = self._samples.setdefault(key, deque(maxlen=self._window))
+            samples.append(seconds * 1000.0)
+
+    def counter(self, key: str, delta: int = 1) -> None:
+        with self._lock:
+            self._counters[key] = self._counters.get(key, 0) + delta
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            out: dict[str, object] = {}
+            for key, samples in self._samples.items():
+                values = list(samples)
+                mean_ms = statistics.fmean(values)
+                fps = 1000.0 / mean_ms if mean_ms > 0 else 0.0
+                out[key] = {
+                    "count": len(values),
+                    "mean_ms": round(mean_ms, 2),
+                    "last_ms": round(values[-1], 2),
+                    "fps": round(fps, 2),
+                }
+            out["counters"] = dict(self._counters)
+            return out
+
+    def format(self) -> str:
+        snap = self.snapshot()
+        lines: list[str] = []
+        for key in sorted(snap):
+            if key == "counters":
+                continue
+            value = snap[key]
+            assert isinstance(value, dict)
+            lines.append(
+                f"{key}: {value['mean_ms']:.1f} ms avg, {value['last_ms']:.1f} ms last, "
+                f"{value['fps']:.1f} fps, n={value['count']}"
+            )
+        counters = snap.get("counters")
+        assert isinstance(counters, dict)
+        if counters:
+            lines.append("counters: " + ", ".join(f"{k}={v}" for k, v in counters.items()))
+        return "\n".join(lines) or "(no samples)"
+
+
+@contextmanager
+def timed(key: str, metrics: Metrics) -> Iterator[None]:
+    """Record the wall-clock duration of a block into `metrics` under `key`."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        metrics.record(key, time.perf_counter() - start)
+
+
+__all__ = ["FPSMeter", "LatencyMeter", "Metrics", "timed"]

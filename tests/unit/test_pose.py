@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pytest
 
@@ -49,6 +51,7 @@ def test_extract_hands_legacy_classifications_shape() -> None:
 def test_extract_hands_empty_result() -> None:
     out = _HandsOut(handedness=[])
     assert MediaPipePoseEstimator._extract_hands(out, width=100, height=100) == []
+    assert MediaPipePoseEstimator._extract_hands(None, width=100, height=100) == []
 
 
 def test_extract_hands_missing_handedness_falls_back() -> None:
@@ -66,3 +69,73 @@ def test_draw_hands_is_noop_without_metadata() -> None:
     frame = np.zeros((240, 320, 3), dtype=np.uint8)
     draw_hands(frame, pose)  # should not raise
     assert frame.sum() == 0
+
+
+def test_next_timestamp_ms_is_strictly_increasing(monkeypatch) -> None:
+    est = object.__new__(MediaPipePoseEstimator)
+    est._last_ts_ms = 0
+
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    first = est._next_timestamp_ms(est._last_ts_ms)
+    est._last_ts_ms = first
+    assert first == 100_000
+
+    monkeypatch.setattr(time, "monotonic", lambda: 100.5)
+    second = est._next_timestamp_ms(est._last_ts_ms)
+    est._last_ts_ms = second
+    assert second == 100_500
+
+    assert second > first
+
+
+def test_next_timestamp_ms_never_repeats_on_same_clock_tick(monkeypatch) -> None:
+    est = object.__new__(MediaPipePoseEstimator)
+    est._last_ts_ms = 0
+
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    first = est._next_timestamp_ms(est._last_ts_ms)
+    second = est._next_timestamp_ms(first)  # same tick, must not collide
+
+    assert second == first + 1
+
+
+def _hold_estimator() -> MediaPipePoseEstimator:
+    est = object.__new__(MediaPipePoseEstimator)
+    est._last_detected = []
+    est._last_detected_ts = 0.0
+    est._hand_hold_seconds = 0.5
+    return est
+
+
+def test_exposed_hands_returns_detection_and_refreshes_last() -> None:
+    est = _hold_estimator()
+    out = _HandsOut(handedness=[[_Category("Left", 0.93)]])
+    hands = est._exposed_hands(out, width=100, height=100)
+    assert len(hands) == 1
+    assert hands == est._last_detected
+
+
+def test_exposed_hands_holds_last_detection_across_a_miss(monkeypatch) -> None:
+    est = _hold_estimator()
+    est._last_detected = [{"handedness": "Right", "confidence": 0.9, "keypoints": []}]
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    est._last_detected_ts = 99.9  # 0.1s ago, inside hold window
+    hands = est._exposed_hands(None, width=100, height=100)
+    assert hands == est._last_detected
+
+
+def test_exposed_hands_clears_after_hold_expires(monkeypatch) -> None:
+    est = _hold_estimator()
+    est._last_detected = [{"handedness": "Right", "confidence": 0.9, "keypoints": []}]
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    est._last_detected_ts = 90.0  # 10s ago, outside hold window
+    hands = est._exposed_hands(None, width=100, height=100)
+    assert hands == []
+
+
+def test_exposed_hands_empty_when_nothing_detected(monkeypatch) -> None:
+    est = _hold_estimator()
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    est._last_detected_ts = 100.0  # recent but nothing held
+    hands = est._exposed_hands(None, width=100, height=100)
+    assert hands == []

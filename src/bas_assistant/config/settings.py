@@ -16,11 +16,14 @@ from pydantic import BaseModel, Field
 DEFAULT_CONFIG_PATH = Path("configs/default.yaml")
 
 
-class VideoConfig(BaseModel):
-    source: int | str = 0
+class CameraConfig(BaseModel):
+    device: int | str = 0
     width: int = 1280
     height: int = 720
-    target_fps: int = 30
+    fps: int = 30
+    format: str | None = "MJPG"
+    backend: Literal["auto", "v4l2", "dshow", "msmf"] = "auto"
+    disable_dynamic_framerate: bool = False
 
 
 class PoseConfig(BaseModel):
@@ -29,6 +32,10 @@ class PoseConfig(BaseModel):
     hand_model_path: Path = Path("models/hand_landmarker.task")
     min_detection_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     min_tracking_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    min_hand_detection_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+    min_hand_presence_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
+    min_hand_tracking_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
+    hand_hold_seconds: float = Field(default=0.5, ge=0.0, le=5.0)
     with_hands: bool = True
 
 
@@ -48,10 +55,11 @@ class PipelineConfig(BaseModel):
     classify_hop: int = Field(default=5, ge=1)
     smoothing_window: int = Field(default=5, ge=1)
     max_fps: int = Field(default=30, ge=1)
+    metrics_enabled: bool = False
 
 
 class Settings(BaseModel):
-    video: VideoConfig = Field(default_factory=VideoConfig)
+    camera: CameraConfig = Field(default_factory=CameraConfig)
     pose: PoseConfig = Field(default_factory=PoseConfig)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
@@ -69,11 +77,11 @@ def load_settings(path: Path | None = DEFAULT_CONFIG_PATH) -> Settings:
 
 
 __all__ = [
+    "CameraConfig",
     "ClassifierConfig",
     "DatabaseConfig",
     "PipelineConfig",
     "PoseConfig",
     "Settings",
-    "VideoConfig",
     "load_settings",
 ]

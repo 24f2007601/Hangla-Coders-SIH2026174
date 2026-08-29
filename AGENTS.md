@@ -182,7 +182,7 @@ pipeline.process_frame(frame)
 ### Configuration (`configs/default.yaml`)
 
 ```yaml
-video:        { source: 0, width: 1280, height: 720, target_fps: 30 }
+camera:       { device: 0, width: 1280, height: 720, fps: 30, format: MJPG, backend: auto }
 pose:         { model: mediapipe, min_detection_confidence: 0.5, min_tracking_confidence: 0.5 }
 classifier:   { model_type: dummy, model_path: models/activity_classifier.onnx }
 database:     { url: sqlite:///data/project.db }

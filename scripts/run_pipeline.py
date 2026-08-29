@@ -49,16 +49,35 @@ def _parse_args() -> argparse.Namespace:
         "--max-frames", type=int, default=0, help="Stop after N frames (0 = run until source ends)"
     )
     parser.add_argument("--verbose", action="store_true", help="DEBUG-level logging")
+    parser.add_argument(
+        "--metrics", action="store_true", help="Enable debug timing instrumentation"
+    )
     return parser.parse_args()
 
 
-def _make_source(source: str, width: int, height: int):
+def _make_source(source: str, settings) -> OpenCVVideoSource | DummyVideoSource:
     if source == "dummy":
         # Effectively unlimited synthetic frames; --max-frames caps the run.
-        return DummyVideoSource(width=width, height=height, num_frames=1_000_000)
+        return DummyVideoSource(
+            width=settings.camera.width, height=settings.camera.height, num_frames=1_000_000
+        )
     if source.isdigit():
-        return OpenCVVideoSource(int(source), width=width, height=height)
-    return OpenCVVideoSource(source, width=width, height=height)
+        return OpenCVVideoSource(
+            int(source),
+            width=settings.camera.width,
+            height=settings.camera.height,
+            fps=settings.camera.fps,
+            format=settings.camera.format,
+            backend=settings.camera.backend,
+        )
+    return OpenCVVideoSource(
+        source,
+        width=settings.camera.width,
+        height=settings.camera.height,
+        fps=settings.camera.fps,
+        format=settings.camera.format,
+        backend=settings.camera.backend,
+    )
 
 
 def main() -> int:
@@ -72,6 +91,8 @@ def main() -> int:
         settings.classifier.model_type = args.classifier  # type: ignore[assignment]
     if args.out_dir is not None:
         settings.database.output_dir = args.out_dir
+    if args.metrics:
+        settings.pipeline.metrics_enabled = True
 
     try:
         pipeline = build_pipeline(settings)
@@ -79,7 +100,7 @@ def main() -> int:
         logger.error("Pipeline build failed: %s", exc)
         return 1
 
-    source = _make_source(args.source, settings.video.width, settings.video.height)
+    source = _make_source(args.source, settings)
     try:
         source.start()
     except VideoSourceError as exc:
@@ -118,6 +139,11 @@ def main() -> int:
         frames_processed,
         settings.database.output_dir / f"{session_id}.jsonl",
     )
+    if pipeline.metrics is not None:
+        logger.info("Camera diagnostics: %s", source.diagnostics())
+        report = pipeline.timing_report()
+        if report:
+            logger.info("Vision metrics:\n%s", report)
     return 0
 
 
