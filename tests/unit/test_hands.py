@@ -26,9 +26,9 @@ def test_palm_center():
     assert result.shape == (2,)
 
 def test_palm_center_extraction_from_both_hands():
+    from bas_assistant.features.extractor import extract_frame_features
     from bas_assistant.models import Keypoint, PoseResult
     from bas_assistant.pose.normalization import normalize_pose
-    from bas_assistant.features.extractor import extract_frame_features
 
     body = [Keypoint(x=100, y=100, confidence=1.0) for _ in range(33)]
 
