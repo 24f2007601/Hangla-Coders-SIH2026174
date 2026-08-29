@@ -145,6 +145,12 @@ ui = [
     { name = "pyside6" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bas-assistant", extras = ["ml", "ui", "dev"], marker = "extra == 'all'" },
@@ -164,6 +170,12 @@ requires-dist = [
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0" },
 ]
 provides-extras = ["ml", "ui", "dev", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=26.5.1" },
+    { name = "ruff", specifier = ">=0.16.5" },
+]
 
 [[package]]
 name = "black"

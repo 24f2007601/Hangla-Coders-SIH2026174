@@ -8,7 +8,7 @@ as implemented; see `docs/architecture.md` for the future orientation-agnostic p
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -43,6 +43,7 @@ class NormalizedPose:
     valid: bool
     origin: tuple[float, float]
     scale: float
+    metadata: dict = field(default_factory=dict)
 
     def as_array(self) -> np.ndarray:
         """Concatenated (N*2,) vector of x,y coordinates (skips confidence)."""
@@ -115,6 +116,7 @@ def normalize_pose(
         valid=True,
         origin=(float(origin[0]), float(origin[1])),
         scale=scale,
+        metadata=pose.metadata,
     )
 
 

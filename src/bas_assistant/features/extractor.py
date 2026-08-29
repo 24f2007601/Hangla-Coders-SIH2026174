@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from bas_assistant.features.hands import palm_center
 from bas_assistant.features.window import FeatureWindow
 from bas_assistant.models import PoseResult
 from bas_assistant.pose.landmarks import (
@@ -48,6 +49,19 @@ SPATIAL_FEATURES: tuple[str, ...] = (
     "wrist_confidence",
 )
 
+HAND_FEATURES: tuple[str, ...] = (
+    "left_palm_x",
+    "left_palm_y",
+    "right_palm_x",
+    "right_palm_y",
+    "left_hand_present",
+    "right_hand_present",
+    "left_hand_to_torso_x",
+    "left_hand_to_torso_y",
+    "right_hand_to_torso_x",
+    "right_hand_to_torso_y",
+)
+
 # Per-frame reference joint coordinates (normalized space), used for velocities.
 TRACKED_FEATURES: tuple[str, ...] = (
     "nose_x",
@@ -71,7 +85,7 @@ TEMPORAL_FEATURES: tuple[str, ...] = (
 WINDOW_STATS = ("mean", "std")
 
 # Fixed feature-vector length emitted by PoseFeatureExtractor.features().
-FEATURE_VECTOR_SIZE = 2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES)
+FEATURE_VECTOR_SIZE = 2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES) + len(HAND_FEATURES)
 
 _NUM_SPATIAL = len(SPATIAL_FEATURES)
 _NUM_TRACKED = len(TRACKED_FEATURES)
@@ -81,6 +95,7 @@ _NUM_TRACKED = len(TRACKED_FEATURES)
 class FrameFeatures:
     spatial: np.ndarray  # (len(SPATIAL_FEATURES),)
     tracked: np.ndarray  # (len(TRACKED_FEATURES),)
+    hands: np.ndarray | None = None
 
 
 def _angle(a: np.ndarray, vertex: np.ndarray, b: np.ndarray) -> float:
@@ -98,6 +113,30 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
     """Compute spatial + tracked features for one normalized pose."""
     kp = normalized.keypoints
     conf = normalized.confidence
+
+    hands = normalized.metadata.get("hands", [])
+
+    left_palm = np.array([0.0, 0.0], dtype=float)
+    right_palm = np.array([0.0, 0.0], dtype=float)
+    left_present = 0.0
+    right_present = 0.0
+
+    for hand in hands:
+        keypoints = hand.get("keypoints", [])
+        handedness = hand.get("handedness", "").lower()
+
+        if len(keypoints) != 21:
+            continue
+
+        center = palm_center(keypoints)
+
+        if handedness == "left":
+            left_palm = center
+            left_present = 1.0
+        elif handedness == "right":
+            right_palm = center
+            right_present = 1.0
+
     visible = {i for i in range(len(kp)) if conf[i] >= 0.5}
 
     l_sh, r_sh = kp[LEFT_SHOULDER], kp[RIGHT_SHOULDER]
@@ -136,7 +175,32 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
         [nose[0], nose[1], r_w[0], r_w[1], l_w[0], l_w[1]],
         dtype=float,
     )
-    return FrameFeatures(spatial=spatial, tracked=tracked)
+    torso = (normalized.keypoints[LEFT_SHOULDER] + normalized.keypoints[RIGHT_SHOULDER]) / 2
+
+    left_relative = left_palm - torso
+    right_relative = right_palm - torso
+
+    hands_array = np.array(
+        [
+            left_palm[0],
+            left_palm[1],
+            right_palm[0],
+            right_palm[1],
+            left_present,
+            right_present,
+            left_relative[0],
+            left_relative[1],
+            right_relative[0],
+            right_relative[1],
+        ],
+        dtype=float,
+    )
+
+    return FrameFeatures(
+        spatial=spatial,
+        tracked=tracked,
+        hands=hands_array,
+    )
 
 
 class PoseFeatureExtractor:
@@ -174,7 +238,7 @@ class PoseFeatureExtractor:
         if self._last_tracked is not None:
             temporal = frame.tracked - self._last_tracked
         self._last_tracked = frame.tracked
-        raw = np.concatenate([frame.spatial, temporal])
+        raw = np.concatenate([frame.spatial, temporal, frame.hands])
         self._window.push(raw)
         if self._window.is_full:
             self._ready = True
@@ -184,14 +248,16 @@ class PoseFeatureExtractor:
         """Aggregated (34,) vector: mean/std of spatial + mean of temporal features."""
         if not self._ready:
             raise ValueError("feature window not full; call push() until it returns True")
-        items = np.asarray(self._window.items(), dtype=float)  # (W, 20)
+        items = np.asarray(self._window.items(), dtype=float)  # (W, 26)
         spatial = items[:, :_NUM_SPATIAL]
-        temporal = items[:, _NUM_SPATIAL:]
+        temporal = items[:, _NUM_SPATIAL : _NUM_SPATIAL + len(TEMPORAL_FEATURES)]
+        hands = items[:, _NUM_SPATIAL + len(TEMPORAL_FEATURES) :]
         return np.concatenate(
             [
                 spatial.mean(axis=0),
                 spatial.std(axis=0),
                 temporal.mean(axis=0),
+                hands.mean(axis=0),
             ]
         )
 
@@ -200,6 +266,7 @@ class PoseFeatureExtractor:
         return (
             *[f"{name}_{stat}" for stat in WINDOW_STATS for name in SPATIAL_FEATURES],
             *TEMPORAL_FEATURES,
+            *HAND_FEATURES,
         )
 
 
