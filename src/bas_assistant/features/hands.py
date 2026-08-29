@@ -8,10 +8,7 @@ def palm_center(keypoints: list[dict[str, float]]) -> np.ndarray:
     indices = (0, 5, 9, 13, 17)
 
     return np.mean(
-        [
-            [keypoints[i]["x"], keypoints[i]["y"]]
-            for i in indices
-        ],
+        [[keypoints[i]["x"], keypoints[i]["y"]] for i in indices],
         axis=0,
         dtype=float,
     )

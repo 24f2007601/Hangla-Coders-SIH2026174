@@ -85,11 +85,7 @@ TEMPORAL_FEATURES: tuple[str, ...] = (
 WINDOW_STATS = ("mean", "std")
 
 # Fixed feature-vector length emitted by PoseFeatureExtractor.features().
-FEATURE_VECTOR_SIZE = (
-    2 * len(SPATIAL_FEATURES)
-    + len(TEMPORAL_FEATURES)
-    + len(HAND_FEATURES)
-)
+FEATURE_VECTOR_SIZE = 2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES) + len(HAND_FEATURES)
 
 _NUM_SPATIAL = len(SPATIAL_FEATURES)
 _NUM_TRACKED = len(TRACKED_FEATURES)
@@ -100,6 +96,7 @@ class FrameFeatures:
     spatial: np.ndarray  # (len(SPATIAL_FEATURES),)
     tracked: np.ndarray  # (len(TRACKED_FEATURES),)
     hands: np.ndarray | None = None
+
 
 def _angle(a: np.ndarray, vertex: np.ndarray, b: np.ndarray) -> float:
     """Angle (radians) at `vertex` between vectors (a - vertex) and (b - vertex)."""
@@ -178,10 +175,7 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
         [nose[0], nose[1], r_w[0], r_w[1], l_w[0], l_w[1]],
         dtype=float,
     )
-    torso = (
-        normalized.keypoints[LEFT_SHOULDER]
-        + normalized.keypoints[RIGHT_SHOULDER]
-    ) / 2
+    torso = (normalized.keypoints[LEFT_SHOULDER] + normalized.keypoints[RIGHT_SHOULDER]) / 2
 
     left_relative = left_palm - torso
     right_relative = right_palm - torso
@@ -256,8 +250,8 @@ class PoseFeatureExtractor:
             raise ValueError("feature window not full; call push() until it returns True")
         items = np.asarray(self._window.items(), dtype=float)  # (W, 26)
         spatial = items[:, :_NUM_SPATIAL]
-        temporal = items[:, _NUM_SPATIAL:_NUM_SPATIAL + len(TEMPORAL_FEATURES)]
-        hands = items[:, _NUM_SPATIAL + len(TEMPORAL_FEATURES):]
+        temporal = items[:, _NUM_SPATIAL : _NUM_SPATIAL + len(TEMPORAL_FEATURES)]
+        hands = items[:, _NUM_SPATIAL + len(TEMPORAL_FEATURES) :]
         return np.concatenate(
             [
                 spatial.mean(axis=0),

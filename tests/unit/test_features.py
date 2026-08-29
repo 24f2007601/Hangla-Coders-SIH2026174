@@ -17,11 +17,9 @@ from bas_assistant.features.window import FeatureWindow
 
 def test_feature_vector_size_matches_schema() -> None:
     assert (
-    2 * len(SPATIAL_FEATURES)
-    + len(TEMPORAL_FEATURES)
-    + len(HAND_FEATURES)
-    == FEATURE_VECTOR_SIZE
-)
+        2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES) + len(HAND_FEATURES)
+        == FEATURE_VECTOR_SIZE
+    )
 
 
 def test_feature_window_full_transition() -> None:
