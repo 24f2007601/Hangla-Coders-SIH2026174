@@ -8,6 +8,7 @@ import pytest
 from bas_assistant.features.extractor import (
     FEATURE_VECTOR_SIZE,
     SPATIAL_FEATURES,
+    HAND_FEATURES,
     TEMPORAL_FEATURES,
     PoseFeatureExtractor,
 )
@@ -15,7 +16,12 @@ from bas_assistant.features.window import FeatureWindow
 
 
 def test_feature_vector_size_matches_schema() -> None:
-    assert 2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES) == FEATURE_VECTOR_SIZE
+    assert (
+    2 * len(SPATIAL_FEATURES)
+    + len(TEMPORAL_FEATURES)
+    + len(HAND_FEATURES)
+    == FEATURE_VECTOR_SIZE
+)
 
 
 def test_feature_window_full_transition() -> None:
@@ -102,6 +108,11 @@ def test_temporal_velocity_features_respond_to_motion(dummy_pose) -> None:
         moving.push(moving_estimator.estimate(np.zeros((240, 320, 3), dtype=np.uint8)))
 
     # Temporal features sit at the tail of the vector.
-    still_temporal = still.features()[-len(TEMPORAL_FEATURES) :]
-    moving_temporal = moving.features()[-len(TEMPORAL_FEATURES) :]
+    still_temporal = still.features()[
+        -(len(TEMPORAL_FEATURES) + len(HAND_FEATURES)) : -len(HAND_FEATURES)
+    ]
+
+    moving_temporal = moving.features()[
+        -(len(TEMPORAL_FEATURES) + len(HAND_FEATURES)) : -len(HAND_FEATURES)
+    ]
     assert np.linalg.norm(moving_temporal) > np.linalg.norm(still_temporal)
