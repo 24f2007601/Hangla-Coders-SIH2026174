@@ -71,3 +71,9 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "ruff>=0.16.5",
+]
