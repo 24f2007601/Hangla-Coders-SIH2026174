@@ -93,6 +93,10 @@ class MediaPipePoseEstimator:
         self._hand_hold_seconds = max(hand_hold_seconds, 0.0)
         self._last_detected: list[dict] = []
         self._last_detected_ts = 0.0
+        self._hands_detected = 0
+        self._hands_held = 0
+        self._hands_missed = 0
+        self._hands_frames_dropped = 0
         if with_hands:
             if not Path(hand_model_path).exists():
                 raise PoseEstimatorUnavailableError(
@@ -133,6 +137,23 @@ class MediaPipePoseEstimator:
         """Timing metrics for pose and hands inference (diagnostics)."""
         return self._metrics
 
+    def hands_diagnostics(self) -> dict:
+        """Counts separating detector misses from stale/held landmarks and worker lag.
+
+        - ``detected``: frames with a fresh hand detection.
+        - ``held_stale``: frames where the previous detection was shown because the
+          hold window had not expired (landmarks can lag the video hand here).
+        - ``missed``: frames with no hand shown (genuine detector failure).
+        - ``worker_frames_dropped``: frames skipped because the hand worker thread
+          was still busy with an older frame (hand results lag the frame).
+        """
+        return {
+            "detected": self._hands_detected,
+            "held_stale": self._hands_held,
+            "missed": self._hands_missed,
+            "worker_frames_dropped": self._hands_frames_dropped,
+        }
+
     def _next_timestamp_ms(self, last: int) -> int:
         """Strictly-increasing monotonic timestamp (ms) for VIDEO-mode detect calls."""
         now = int(time.monotonic() * 1000)
@@ -166,15 +187,31 @@ class MediaPipePoseEstimator:
                 logger.exception("Hand landmarker detection failed")
 
     def _exposed_hands(self, hands_out, width: int, height: int) -> list[dict]:
-        """Hand landmarks with a debounce hold against one-off detection misses."""
+        """Hand landmarks with a debounce hold against one-off detection misses.
+
+        Each call is tallied as one of: fresh ``detected``, ``held`` (stale
+        landmarks shown during a miss), or ``missed`` (nothing shown). Combined
+        with the worker-frame-drop counter this separates genuine detector
+        misses from stale-landmark rendering artifacts.
+        """
         current = self._extract_hands(hands_out, width, height)
         now = time.monotonic()
         if current:
+            if not self._last_detected:
+                logger.debug("hands: detection resumed (%d hand(s))", len(current))
+            self._hands_detected += 1
             self._last_detected = current
             self._last_detected_ts = now
             return current
         if self._last_detected and now - self._last_detected_ts < self._hand_hold_seconds:
+            self._hands_held += 1
             return self._last_detected
+        if self._last_detected:
+            logger.debug(
+                "hands: hold expired after %.2fs (miss)", now - self._last_detected_ts
+            )
+            self._last_detected = []
+        self._hands_missed += 1
         return []
 
     def estimate(self, frame: np.ndarray) -> PoseResult | None:
@@ -187,6 +224,9 @@ class MediaPipePoseEstimator:
         hands_out = None
         if self._hands is not None:
             with self._hands_slot_lock:
+                if self._hands_slot is not None:
+                    # Worker still busy with an older frame -> it will skip this one.
+                    self._hands_frames_dropped += 1
                 self._hands_slot = rgb
                 self._hands_pending.set()
             with self._hands_lock:
