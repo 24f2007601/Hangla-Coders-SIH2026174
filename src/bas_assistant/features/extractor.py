@@ -1,12 +1,15 @@
 """Spatial + temporal feature extraction from normalized poses.
 
 The extractor converts a sliding window of normalized poses into a fixed-length
-feature vector consumed by the step classifier. Per-frame features are simple,
-deterministic geometric statistics (distances, angles, coordinates); the window
-aggregator reduces them to mean/std statistics plus mean joint velocities.
+feature vector consumed by the step classifier.
 
-The output is a plain 1-D float array with a documented feature order — the step
-classifier never sees raw keypoints or MediaPipe internals.
+Features include:
+- Spatial distances and angles
+- Hand position relative to the torso
+- X/Y velocity
+- Motion speed
+- Motion variability
+- Total motion over the window
 """
 
 from __future__ import annotations
@@ -31,7 +34,13 @@ from bas_assistant.pose.landmarks import (
 )
 from bas_assistant.pose.normalization import NormalizedPose, normalize_pose
 
-# Per-frame spatial feature names (in output order). All in normalized, scale-free units.
+MIN_VISIBLE_KEYPOINTS = 8
+
+
+# ---------------------------------------------------------
+# Spatial features
+# ---------------------------------------------------------
+
 SPATIAL_FEATURES: tuple[str, ...] = (
     "right_wrist_left_shoulder",
     "right_wrist_right_shoulder",
@@ -49,6 +58,11 @@ SPATIAL_FEATURES: tuple[str, ...] = (
     "wrist_confidence",
 )
 
+
+# ---------------------------------------------------------
+# Hand features
+# ---------------------------------------------------------
+
 HAND_FEATURES: tuple[str, ...] = (
     "left_palm_x",
     "left_palm_y",
@@ -62,7 +76,11 @@ HAND_FEATURES: tuple[str, ...] = (
     "right_hand_to_torso_y",
 )
 
-# Per-frame reference joint coordinates (normalized space), used for velocities.
+
+# ---------------------------------------------------------
+# Tracked joints
+# ---------------------------------------------------------
+
 TRACKED_FEATURES: tuple[str, ...] = (
     "nose_x",
     "nose_y",
@@ -72,7 +90,11 @@ TRACKED_FEATURES: tuple[str, ...] = (
     "left_wrist_y",
 )
 
-# Per-frame temporal feature names (velocity of reference joints).
+
+# ---------------------------------------------------------
+# Temporal features
+# ---------------------------------------------------------
+
 TEMPORAL_FEATURES: tuple[str, ...] = (
     "nose_vx",
     "nose_vy",
@@ -80,50 +102,105 @@ TEMPORAL_FEATURES: tuple[str, ...] = (
     "right_wrist_vy",
     "left_wrist_vx",
     "left_wrist_vy",
+    "nose_speed",
+    "right_wrist_speed",
+    "left_wrist_speed",
+    "nose_speed_std",
+    "right_wrist_speed_std",
+    "left_wrist_speed_std",
+    "nose_total_motion",
+    "right_wrist_total_motion",
+    "left_wrist_total_motion",
 )
+
 
 WINDOW_STATS = ("mean", "std")
 
-# Fixed feature-vector length emitted by PoseFeatureExtractor.features().
-FEATURE_VECTOR_SIZE = 2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES) + len(HAND_FEATURES)
-
 _NUM_SPATIAL = len(SPATIAL_FEATURES)
-_NUM_TRACKED = len(TRACKED_FEATURES)
+_NUM_TEMPORAL = len(TEMPORAL_FEATURES)
+
+
+# ---------------------------------------------------------
+# Frame container
+# ---------------------------------------------------------
 
 
 @dataclass(slots=True)
 class FrameFeatures:
-    spatial: np.ndarray  # (len(SPATIAL_FEATURES),)
-    tracked: np.ndarray  # (len(TRACKED_FEATURES),)
+    spatial: np.ndarray
+    tracked: np.ndarray
     hands: np.ndarray | None = None
 
 
-def _angle(a: np.ndarray, vertex: np.ndarray, b: np.ndarray) -> float:
-    """Angle (radians) at `vertex` between vectors (a - vertex) and (b - vertex)."""
+# ---------------------------------------------------------
+# Geometry
+# ---------------------------------------------------------
+
+
+def _angle(
+    a: np.ndarray,
+    vertex: np.ndarray,
+    b: np.ndarray,
+) -> float:
+    """Angle in radians at vertex between a and b."""
+
     v1 = a - vertex
     v2 = b - vertex
+
     norm = np.linalg.norm(v1) * np.linalg.norm(v2)
+
     if norm < 1e-9:
         return 0.0
-    cos = float(np.clip(np.dot(v1, v2) / norm, -1.0, 1.0))
+
+    cos = float(
+        np.clip(
+            np.dot(v1, v2) / norm,
+            -1.0,
+            1.0,
+        )
+    )
+
     return float(np.arccos(cos))
 
 
-def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
-    """Compute spatial + tracked features for one normalized pose."""
+# ---------------------------------------------------------
+# Per-frame spatial extraction
+# ---------------------------------------------------------
+
+
+def extract_frame_features(
+    normalized: NormalizedPose,
+) -> FrameFeatures:
+
     kp = normalized.keypoints
     conf = normalized.confidence
 
     hands = normalized.metadata.get("hands", [])
 
-    left_palm = np.array([0.0, 0.0], dtype=float)
-    right_palm = np.array([0.0, 0.0], dtype=float)
+    left_palm = np.array(
+        [0.0, 0.0],
+        dtype=float,
+    )
+
+    right_palm = np.array(
+        [0.0, 0.0],
+        dtype=float,
+    )
+
     left_present = 0.0
     right_present = 0.0
 
     for hand in hands:
-        keypoints = hand.get("keypoints", [])
-        handedness = hand.get("handedness", "").lower()
+
+        keypoints = hand.get(
+            "keypoints",
+            [],
+        )
+
+        handedness = hand.get(
+            "handedness",
+            "",
+        ).lower()
 
         if len(keypoints) != 21:
             continue
@@ -133,23 +210,45 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
         if handedness == "left":
             left_palm = center
             left_present = 1.0
+
         elif handedness == "right":
             right_palm = center
             right_present = 1.0
 
     visible = {i for i in range(len(kp)) if conf[i] >= 0.5}
 
-    l_sh, r_sh = kp[LEFT_SHOULDER], kp[RIGHT_SHOULDER]
-    l_el, r_el = kp[LEFT_ELBOW], kp[RIGHT_ELBOW]
-    l_w, r_w = kp[LEFT_WRIST], kp[RIGHT_WRIST]
+    l_sh = kp[LEFT_SHOULDER]
+    r_sh = kp[RIGHT_SHOULDER]
+
+    l_el = kp[LEFT_ELBOW]
+    r_el = kp[RIGHT_ELBOW]
+
+    l_w = kp[LEFT_WRIST]
+    r_w = kp[RIGHT_WRIST]
+
     nose = kp[NOSE]
 
-    hip_idx = [i for i in (LEFT_HIP, RIGHT_HIP) if i in visible]
-    hip_center = (
-        np.mean([kp[i] for i in hip_idx], axis=0) if hip_idx else (kp[LEFT_HIP] + kp[RIGHT_HIP]) / 2
-    )
+    hip_idx = [
+        i
+        for i in (
+            LEFT_HIP,
+            RIGHT_HIP,
+        )
+        if i in visible
+    ]
 
-    def dist(a: np.ndarray, b: np.ndarray) -> float:
+    if hip_idx:
+        hip_center = np.mean(
+            [kp[i] for i in hip_idx],
+            axis=0,
+        )
+    else:
+        hip_center = (kp[LEFT_HIP] + kp[RIGHT_HIP]) / 2
+
+    def dist(
+        a: np.ndarray,
+        b: np.ndarray,
+    ) -> float:
         return float(np.linalg.norm(a - b))
 
     spatial = np.array(
@@ -167,14 +266,28 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
             _angle(l_w, l_el, l_sh),
             nose[0],
             nose[1],
-            float(min(conf[RIGHT_WRIST], conf[LEFT_WRIST])),
+            float(
+                min(
+                    conf[RIGHT_WRIST],
+                    conf[LEFT_WRIST],
+                )
+            ),
         ],
         dtype=float,
     )
+
     tracked = np.array(
-        [nose[0], nose[1], r_w[0], r_w[1], l_w[0], l_w[1]],
+        [
+            nose[0],
+            nose[1],
+            r_w[0],
+            r_w[1],
+            l_w[0],
+            l_w[1],
+        ],
         dtype=float,
     )
+
     torso = (normalized.keypoints[LEFT_SHOULDER] + normalized.keypoints[RIGHT_SHOULDER]) / 2
 
     left_relative = left_palm - torso
@@ -203,17 +316,23 @@ def extract_frame_features(normalized: NormalizedPose) -> FrameFeatures:
     )
 
 
+# ---------------------------------------------------------
+# Feature extractor
+# ---------------------------------------------------------
+
+
 class PoseFeatureExtractor:
-    """Accumulates normalized poses and emits aggregated window feature vectors.
+    """Accumulate a pose window and produce classifier features."""
 
-    The returned vector has length ``2 * len(SPATIAL_FEATURES) + len(TEMPORAL_FEATURES)``
-    (34 for the default feature set): mean and std of each spatial feature over the
-    window, followed by the mean velocity of each tracked joint over the window.
-    """
+    def __init__(
+        self,
+        sequence_length: int = 30,
+    ) -> None:
 
-    def __init__(self, sequence_length: int = 30) -> None:
         self._window = FeatureWindow[np.ndarray](sequence_length)
+
         self._last_tracked: np.ndarray | None = None
+
         self._ready = False
 
     @property
@@ -225,44 +344,185 @@ class PoseFeatureExtractor:
         return self._ready
 
     def reset(self) -> None:
+
         self._window.clear()
+
         self._last_tracked = None
+
         self._ready = False
 
-    def push(self, pose: PoseResult) -> bool:
+    def push(
+        self,
+        pose: PoseResult,
+    ) -> bool:
+
         normalized = normalize_pose(pose)
+
         if normalized is None:
             return False
+
         frame = extract_frame_features(normalized)
-        temporal = np.zeros(len(TEMPORAL_FEATURES), dtype=float)
-        if self._last_tracked is not None:
-            temporal = frame.tracked - self._last_tracked
-        self._last_tracked = frame.tracked
-        raw = np.concatenate([frame.spatial, temporal, frame.hands])
+
+        # -------------------------------------------------
+        # Calculate velocity.
+        # -------------------------------------------------
+
+        if self._last_tracked is None:
+
+            velocity = np.zeros(
+                len(TRACKED_FEATURES),
+                dtype=float,
+            )
+
+        else:
+
+            velocity = frame.tracked - self._last_tracked
+
+        self._last_tracked = frame.tracked.copy()
+
+        # -------------------------------------------------
+        # Calculate speed for each tracked joint.
+        #
+        # nose       -> indices 0,1
+        # right wrist -> indices 2,3
+        # left wrist  -> indices 4,5
+        # -------------------------------------------------
+
+        nose_speed = float(np.linalg.norm(velocity[0:2]))
+
+        right_wrist_speed = float(np.linalg.norm(velocity[2:4]))
+
+        left_wrist_speed = float(np.linalg.norm(velocity[4:6]))
+
+        # -------------------------------------------------
+        # Speed starts as one value per frame.
+        # The extractor later calculates std/total motion.
+        # -------------------------------------------------
+
+        temporal = np.array(
+            [
+                velocity[0],
+                velocity[1],
+                velocity[2],
+                velocity[3],
+                velocity[4],
+                velocity[5],
+                nose_speed,
+                right_wrist_speed,
+                left_wrist_speed,
+                # These are populated later using the
+                # window-level calculation.
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            dtype=float,
+        )
+
+        raw = np.concatenate(
+            [
+                frame.spatial,
+                temporal,
+                frame.hands,
+            ]
+        )
+
         self._window.push(raw)
+
         if self._window.is_full:
             self._ready = True
+
         return self._window.is_full
 
     def features(self) -> np.ndarray:
-        """Aggregated (34,) vector: mean/std of spatial + mean of temporal features."""
+        """Return the aggregated feature vector."""
+
         if not self._ready:
-            raise ValueError("feature window not full; call push() until it returns True")
-        items = np.asarray(self._window.items(), dtype=float)  # (W, 26)
-        spatial = items[:, :_NUM_SPATIAL]
-        temporal = items[:, _NUM_SPATIAL : _NUM_SPATIAL + len(TEMPORAL_FEATURES)]
-        hands = items[:, _NUM_SPATIAL + len(TEMPORAL_FEATURES) :]
+
+            raise ValueError("feature window not full; " "call push() until it returns True")
+
+        items = np.asarray(
+            self._window.items(),
+            dtype=float,
+        )
+
+        # -------------------------------------------------
+        # Split stored frame features.
+        # -------------------------------------------------
+
+        spatial = items[
+            :,
+            :_NUM_SPATIAL,
+        ]
+
+        temporal = items[
+            :,
+            _NUM_SPATIAL : _NUM_SPATIAL + _NUM_TEMPORAL,
+        ]
+
+        hands = items[:, _NUM_SPATIAL + _NUM_TEMPORAL :]
+
+        # -------------------------------------------------
+        # Spatial statistics.
+        # -------------------------------------------------
+
+        spatial_mean = spatial.mean(axis=0)
+
+        spatial_std = spatial.std(axis=0)
+
+        # -------------------------------------------------
+        # Signed velocity.
+        #
+        # Useful for direction.
+        # -------------------------------------------------
+
+        velocity_mean = temporal[
+            :,
+            0:6,
+        ].mean(axis=0)
+
+        # -------------------------------------------------
+        # Speed statistics.
+        #
+        # Unlike signed velocity, speed cannot cancel
+        # when the hand changes direction.
+        # -------------------------------------------------
+
+        speed = temporal[
+            :,
+            6:9,
+        ]
+
+        speed_mean = speed.mean(axis=0)
+
+        speed_std = speed.std(axis=0)
+
+        speed_total = speed.sum(axis=0)
+
+        # -------------------------------------------------
+        # Hand statistics.
+        # -------------------------------------------------
+
+        hands_mean = hands.mean(axis=0)
+
         return np.concatenate(
             [
-                spatial.mean(axis=0),
-                spatial.std(axis=0),
-                temporal.mean(axis=0),
-                hands.mean(axis=0),
+                spatial_mean,
+                spatial_std,
+                velocity_mean,
+                speed_mean,
+                speed_std,
+                speed_total,
+                hands_mean,
             ]
         )
 
     @property
     def feature_names(self) -> tuple[str, ...]:
+
         return (
             *[f"{name}_{stat}" for stat in WINDOW_STATS for name in SPATIAL_FEATURES],
             *TEMPORAL_FEATURES,
@@ -270,10 +530,18 @@ class PoseFeatureExtractor:
         )
 
 
+# ---------------------------------------------------------
+# Feature vector size
+# ---------------------------------------------------------
+
+FEATURE_VECTOR_SIZE = 2 * len(SPATIAL_FEATURES) + 6 + 3 + 3 + 3 + len(HAND_FEATURES)
+
+
 __all__ = [
     "SPATIAL_FEATURES",
     "TEMPORAL_FEATURES",
     "TRACKED_FEATURES",
+    "HAND_FEATURES",
     "FEATURE_VECTOR_SIZE",
     "PoseFeatureExtractor",
     "extract_frame_features",

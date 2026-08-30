@@ -386,7 +386,9 @@ class OpenCVVideoSource:
             "frames_failed": self._frames_failed,
             "capture_ms_mean": round(_mean(list(self._capture_times_ms)), 2),
             "frame_gap_ms_mean": round(_mean(gaps), 2),
-            "acquisition_fps": round(1000.0 / _mean(gaps), 2) if gaps else 0.0,
+            "acquisition_fps": (
+                round(1000.0 / _mean(gaps), 2) if gaps and _mean(gaps) > 0 else 0.0
+            ),
             "frame_size": [self.width, self.height],
         }
 
