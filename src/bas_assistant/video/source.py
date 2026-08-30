@@ -71,6 +71,34 @@ class OpenCVVideoSource:
             return None
         return frame
 
+        self._frames_failed += 1
+        if self._log_interval and self._frames_failed % self._log_interval == 0:
+            logger.warning(
+                "Camera read failures: %d total (last capture took %.1f ms)",
+                self._frames_failed,
+                capture_ms,
+            )
+        return None
+
+    def diagnostics(self) -> dict:
+        """Summary of negotiated mode, read counts, and acquisition timing."""
+        gaps = list(self._frame_gaps_ms)
+        return {
+            "backend": self._backend_name,
+            "requested": self._requested.as_dict() if self._requested else None,
+            "actual": self._actual.as_dict() if self._actual else None,
+            "frames_read": self._frames_read,
+            "frames_failed": self._frames_failed,
+            "capture_ms_mean": round(_mean(list(self._capture_times_ms)), 2),
+            "frame_gap_ms_mean": round(_mean(gaps), 2),
+            "acquisition_fps": (
+                round(1000.0 / _mean(gaps), 2)
+                if gaps and _mean(gaps) > 0
+                else 0.0
+            ),
+            "frame_size": [self.width, self.height],
+        }
+
     def stop(self) -> None:
         if self._capture is not None:
             self._capture.release()
