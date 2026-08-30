@@ -20,7 +20,7 @@ from bas_assistant.classification.smoothing import majority_vote
 from bas_assistant.config.settings import Settings
 from bas_assistant.events.models import EVENT_SESSION_STARTED, Event
 from bas_assistant.models import PoseResult
-from bas_assistant.utils.timing import FPSMeter, LatencyMeter
+from bas_assistant.utils.timing import FPSMeter, LatencyMeter, Metrics, timed
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ class ExperimentPipeline:
 
         self._fps_meter = FPSMeter()
         self._latency_meter = LatencyMeter()
+        self._metrics = Metrics() if settings.pipeline.metrics_enabled else None
         self._frame_number = 0
         self._hop_counter = 0
         self._recent_labels: deque[tuple[str, float]] = deque(maxlen=self._smoothing_window)
@@ -108,7 +109,30 @@ class ExperimentPipeline:
             }
         )
         self._session_started = False
+        close = getattr(self._pose_estimator, "close", None)
+        if callable(close):
+            close()
+        if self._metrics is not None:
+            logger.info("Vision metrics at end of session:\n%s", self._metrics.format())
         logger.info("Ended pipeline session")
+
+    @property
+    def metrics(self) -> Metrics | None:
+        """Optional debug timing collector (enabled by ``pipeline.metrics_enabled``)."""
+        return self._metrics
+
+    def timing_report(self) -> str:
+        """Multi-line metrics report including pose/hands inference timing.
+
+        Empty string when instrumentation is disabled (``metrics_enabled: false``).
+        """
+        parts: list[str] = []
+        if self._metrics is not None:
+            parts.append("pipeline:\n" + self._metrics.format())
+        estimator_metrics = getattr(self._pose_estimator, "metrics", None)
+        if estimator_metrics is not None:
+            parts.append("pose/hands:\n" + estimator_metrics.format())
+        return "\n".join(parts)
 
     # -- Frame processing ---------------------------------------------------
 
@@ -127,7 +151,11 @@ class ExperimentPipeline:
             tracked = self._tracker.update(detections)
             if tracked:
                 person_id = tracked[0].person_id
-                pose = self._pose_estimator.estimate(frame)
+                if self._metrics is not None:
+                    with timed("pose_estimate", self._metrics):
+                        pose = self._pose_estimator.estimate(frame)
+                else:
+                    pose = self._pose_estimator.estimate(frame)
 
             if pose is not None:
                 classification, new_events = self._step_pipeline(pose, ts)
@@ -137,8 +165,12 @@ class ExperimentPipeline:
             logger.error("Frame %d failed: %s: %s", frame_number, type(exc).__name__, exc)
             error = f"{type(exc).__name__}: {exc}"
 
-        latency_ms = self._latency_meter.update(time.perf_counter() - started)
+        elapsed = time.perf_counter() - started
+        latency_ms = self._latency_meter.update(elapsed)
         fps = self._fps_meter.tick()
+        if self._metrics is not None:
+            self._metrics.record("vision_total", elapsed)
+            self._metrics.counter("frames_processed")
         result = FrameResult(
             timestamp=ts,
             frame_number=frame_number,
@@ -222,6 +254,8 @@ class ExperimentPipeline:
         self._validator.reset()
         self._fps_meter.reset()
         self._latency_meter.reset()
+        if self._metrics is not None:
+            self._metrics = Metrics()
 
 
 __all__ = ["ExperimentPipeline", "FrameResult"]

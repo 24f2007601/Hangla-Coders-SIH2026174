@@ -27,6 +27,10 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
             hand_model_path=settings.pose.hand_model_path,
             min_detection_confidence=settings.pose.min_detection_confidence,
             min_tracking_confidence=settings.pose.min_tracking_confidence,
+            min_hand_detection_confidence=settings.pose.min_hand_detection_confidence,
+            min_hand_presence_confidence=settings.pose.min_hand_presence_confidence,
+            min_hand_tracking_confidence=settings.pose.min_hand_tracking_confidence,
+            hand_hold_seconds=settings.pose.hand_hold_seconds,
             with_hands=settings.pose.with_hands,
         )
     else:

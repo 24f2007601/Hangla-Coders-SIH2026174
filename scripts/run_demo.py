@@ -48,6 +48,9 @@ def _parse_args() -> argparse.Namespace:
         "--classifier", choices=["dummy", "xgboost"], default=None, help="Classifier override"
     )
     parser.add_argument(
+        "--metrics", action="store_true", help="Enable debug timing instrumentation"
+    )
+    parser.add_argument(
         "--max-frames", type=int, default=0, help="Stop after N frames (0 = run until source ends)"
     )
     return parser.parse_args()
@@ -69,6 +72,8 @@ def main() -> int:
         settings.pose.model = args.pose  # type: ignore[assignment]
     if args.classifier is not None:
         settings.classifier.model_type = args.classifier  # type: ignore[assignment]
+    if args.metrics:
+        settings.pipeline.metrics_enabled = True
 
     try:
         pipeline = build_pipeline(settings)
@@ -78,15 +83,25 @@ def main() -> int:
 
     if args.source == "dummy":
         source: DummyVideoSource = DummyVideoSource(
-            width=settings.video.width, height=settings.video.height, num_frames=1_000_000
+            width=settings.camera.width, height=settings.camera.height, num_frames=1_000_000
         )
     elif args.source.isdigit():
         source = OpenCVVideoSource(
-            int(args.source), width=settings.video.width, height=settings.video.height
+            int(args.source),
+            width=settings.camera.width,
+            height=settings.camera.height,
+            fps=settings.camera.fps,
+            format=settings.camera.format,
+            backend=settings.camera.backend,
         )
     else:
         source = OpenCVVideoSource(
-            args.source, width=settings.video.width, height=settings.video.height
+            args.source,
+            width=settings.camera.width,
+            height=settings.camera.height,
+            fps=settings.camera.fps,
+            format=settings.camera.format,
+            backend=settings.camera.backend,
         )
 
     try:
@@ -133,6 +148,11 @@ def main() -> int:
         "Demo finished after %d frames; JSONL session log written to data/processed/",
         frames_processed,
     )
+    if pipeline.metrics is not None:
+        logger.info("Camera diagnostics: %s", source.diagnostics())
+        report = pipeline.timing_report()
+        if report:
+            logger.info("Vision metrics:\n%s", report)
     return 0
 
 

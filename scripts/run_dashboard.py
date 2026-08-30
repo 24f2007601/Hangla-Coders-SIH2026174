@@ -45,8 +45,11 @@ def main() -> int:
 
     source = OpenCVVideoSource(
         int(args.source) if args.source.isdigit() else args.source,
-        width=settings.video.width,
-        height=settings.video.height,
+        width=settings.camera.width,
+        height=settings.camera.height,
+        fps=settings.camera.fps,
+        format=settings.camera.format,
+        backend=settings.camera.backend,
     )
 
     try:
