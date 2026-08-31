@@ -175,6 +175,10 @@ class MediaPipePoseEstimator:
             return current
         if self._last_detected and now - self._last_detected_ts < self._hand_hold_seconds:
             return self._last_detected
+        if self._last_detected:
+            logger.debug("hands: hold expired after %.2fs (miss)", now - self._last_detected_ts)
+            self._last_detected = []
+        self._hands_missed += 1
         return []
 
     def estimate(self, frame: np.ndarray) -> PoseResult | None:

@@ -104,6 +104,9 @@ def _hold_estimator() -> MediaPipePoseEstimator:
     est._last_detected = []
     est._last_detected_ts = 0.0
     est._hand_hold_seconds = 0.5
+    est._hands_detected = 0
+    est._hands_held = 0
+    est._hands_missed = 0
     return est
 
 
