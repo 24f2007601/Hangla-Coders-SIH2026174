@@ -55,3 +55,11 @@ _Avoid_: Run, recording
 **Vertical Slice**:
 A single end-to-end path through the system that works with real components (webcam → pose → features → step → FSM → log → GUI), proving the whole loop rather than all subsystems at full depth.
 _Avoid_: Demo, feature, module
+
+**Verification Gate**:
+A required, observable condition that must pass before an Experiment Protocol can proceed or complete. It is distinct from recognizing an Experiment Step; for example, a phone screen being powered on or a receiver's LED state confirming that a microphone connected.
+_Avoid_: Success step, check
+
+**Receiver Pairing State**:
+The visible connection state of the wireless microphone receiver, inferred from its two blue LEDs. For the one-microphone protocol: both LEDs blinking means the receiver is connected to the phone but no microphone is paired; exactly one steady illuminated LED and one blinking LED means exactly one microphone is successfully connected.
+_Avoid_: Connected (without stating which connection), LED success
