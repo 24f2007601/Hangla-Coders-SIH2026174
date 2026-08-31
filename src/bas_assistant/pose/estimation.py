@@ -207,9 +207,7 @@ class MediaPipePoseEstimator:
             self._hands_held += 1
             return self._last_detected
         if self._last_detected:
-            logger.debug(
-                "hands: hold expired after %.2fs (miss)", now - self._last_detected_ts
-            )
+            logger.debug("hands: hold expired after %.2fs (miss)", now - self._last_detected_ts)
             self._last_detected = []
         self._hands_missed += 1
         return []
