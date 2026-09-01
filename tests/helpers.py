@@ -15,7 +15,7 @@ from bas_assistant.pose.estimation import DummyPoseEstimator
 from bas_assistant.storage.repository import JsonResultRepository
 from bas_assistant.tracking.tracker import DummyPersonTracker
 from bas_assistant.validation.fsm import ExperimentFSM
-from bas_assistant.validation.protocol import DEFAULT_TOY_PROTOCOL
+from bas_assistant.validation.protocol import DEFAULT_MICROPHONE_PROTOCOL
 
 
 class ScriptedClassifier:
@@ -63,7 +63,7 @@ def build_test_pipeline(
         pose_estimator=DummyPoseEstimator(motion=0.0),
         feature_extractor=PoseFeatureExtractor(sequence_length),
         classifier=classifier or DummyClassifier(),
-        validator=ExperimentFSM(DEFAULT_TOY_PROTOCOL),
+        validator=ExperimentFSM(DEFAULT_MICROPHONE_PROTOCOL),
         event_manager=EventManager(),
         repository=JsonResultRepository(output_dir),
     )

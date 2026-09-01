@@ -40,7 +40,7 @@ def test_pipeline_runs_end_to_end_with_dummy_classifier(tmp_path: Path) -> None:
 
 
 def test_pipeline_publishes_confirmed_step_events(tmp_path: Path) -> None:
-    classifier = ScriptedClassifier([("S0", 8), ("S1", 8), ("S2", 8)])
+    classifier = ScriptedClassifier([("M0", 8), ("M1", 8), ("M2", 8)])
     pipeline = build_test_pipeline(tmp_path, classifier=classifier)
     pipeline.start_session()
 
@@ -50,7 +50,7 @@ def test_pipeline_publishes_confirmed_step_events(tmp_path: Path) -> None:
     pipeline.end_session()
 
     confirmed = [e for e in pipeline._event_manager.events if e.type == EVENT_CONFIRMED]
-    assert [e.step for e in confirmed] == ["S0", "S1", "S2"]
+    assert [e.step for e in confirmed] == ["M0", "M1", "M2"]
 
 
 def test_pipeline_tolerates_single_frame_failure(tmp_path: Path) -> None:
