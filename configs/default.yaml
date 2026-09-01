@@ -1,42 +1,41 @@
 camera:
-  device: 0            # camera index (int) or path to a video file
+  device: 0
   width: 1280
   height: 720
   fps: 30
-  format: MJPG         # pixel format / FourCC (MJPG, YUYV, ...); None = driver default.
-                       # MJPG avoids the YUYV@10fps fallback on Linux that breaks MediaPipe
-                       # hand tracking. Ignored when device is a video file.
-  backend: auto        # auto | v4l2 | dshow | msmf. auto picks the platform default
-                       # (V4L2 on Linux, DirectShow on Windows).
-  disable_dynamic_framerate: false   # Linux/V4L2 only: disable exposure_dynamic_framerate.
-                       # The UVC driver enables it by default and silently drops the
-                       # delivered frame rate (e.g. 30 -> ~17 fps) under auto-exposure,
-                       # which breaks MediaPipe hand tracking. Requires v4l2-ctl.
+  format: MJPG
+  backend: auto
+  disable_dynamic_framerate: false
 
 pose:
-  model: mediapipe     # mediapipe | dummy
+  model: mediapipe
   pose_model_path: models/pose_landmarker_lite.task
   hand_model_path: models/hand_landmarker.task
-  min_detection_confidence: 0.5
+
+  # Lowered from 0.5 after testing the real recordings.
+  min_detection_confidence: 0.3
+
   min_tracking_confidence: 0.5
-  min_hand_detection_confidence: 0.3   # palm detector is the flaky step on weak/low-light cams
+
+  min_hand_detection_confidence: 0.3
   min_hand_presence_confidence: 0.4
   min_hand_tracking_confidence: 0.4
-  hand_hold_seconds: 0.5               # debounce: keep last detected hands this long after a miss
+
+  hand_hold_seconds: 0.5
   with_hands: true
 
 classifier:
-  model_type: dummy    # dummy | xgboost
-  model_path: models/step_classifier.json
+  model_type: xgboost
+  model_path: models/step_classifier_fused.json
   confidence_threshold: 0.5
 
 database:
-  url: sqlite:///data/project.db   # reserved for SQLite backend; PoC uses JSON session logs
+  url: sqlite:///data/project.db
   output_dir: data/processed
 
 pipeline:
-  sequence_length: 30              # feature window size (frames)
-  classify_hop: 5                  # frames between classifier evaluations
-  smoothing_window: 5              # majority-vote smoothing over recent labels
-  max_fps: 30                      # soft cap to keep the UI responsive
-  metrics_enabled: false           # debug timing instrumentation (see scripts/camera_diagnostic.py)
+  sequence_length: 30
+  classify_hop: 5
+  smoothing_window: 5
+  max_fps: 30
+  metrics_enabled: false

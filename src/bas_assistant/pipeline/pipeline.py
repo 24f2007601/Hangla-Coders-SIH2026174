@@ -21,6 +21,7 @@ from bas_assistant.config.settings import Settings
 from bas_assistant.events.models import EVENT_SESSION_STARTED, Event
 from bas_assistant.models import PoseResult
 from bas_assistant.utils.timing import FPSMeter, LatencyMeter, Metrics, timed
+from bas_assistant.validation.protocol_evidence import confirm_step
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class ExperimentPipeline:
         validator,
         event_manager,
         repository,
+        object_detector=None,
     ) -> None:
         self._settings = settings
         self._detector = detector
@@ -68,7 +70,7 @@ class ExperimentPipeline:
         self._validator = validator
         self._event_manager = event_manager
         self._repository = repository
-
+        self._object_detector = object_detector
         self._hop = settings.pipeline.classify_hop
         self._smoothing_window = settings.pipeline.smoothing_window
         self._confidence_threshold = settings.classifier.confidence_threshold
@@ -158,7 +160,17 @@ class ExperimentPipeline:
                     pose = self._pose_estimator.estimate(frame)
 
             if pose is not None:
-                classification, new_events = self._step_pipeline(pose, ts)
+                if self._object_detector is not None:
+                    objects = self._object_detector.detect(frame)
+
+                    pose.metadata["objects"] = objects
+                    pose.metadata["frame_width"] = frame.shape[1]
+                    pose.metadata["frame_height"] = frame.shape[0]
+
+                classification, new_events = self._step_pipeline(
+                    pose,
+                    ts,
+                )
 
             self._record_observation(frame_number, person_id, pose, classification, error)
         except Exception as exc:  # noqa: BLE001 - a bad frame must not kill the pipeline
@@ -201,7 +213,42 @@ class ExperimentPipeline:
 
         features = self._feature_extractor.features()
         raw = self._classifier.classify(features)
-        self._recent_labels.append((raw.step, raw.confidence))
+
+        if self._object_detector is not None:
+            objects = []
+
+            if getattr(pose, "metadata", None):
+                objects = pose.metadata.get("objects", [])
+
+            confirmed_candidate = confirm_step(
+                candidate=raw.step,
+                confidence=raw.confidence,
+                current_index=self._validator.current_index,
+                objects=objects,
+            )
+
+            if confirmed_candidate is None:
+                self._current_classification = ClassificationResult(
+                    step=BACKGROUND_STEP,
+                    confidence=raw.confidence,
+                )
+                return self._current_classification, events
+
+            self._recent_labels.append(
+                (
+                    confirmed_candidate,
+                    raw.confidence,
+                )
+            )
+        else:
+            # Preserve the original classifier → smoothing → FSM behavior
+            # for tests and pipelines without object-level evidence.
+            self._recent_labels.append(
+                (
+                    raw.step,
+                    raw.confidence,
+                )
+            )
 
         smoothed = majority_vote(list(self._recent_labels), self._confidence_threshold)
         if smoothed is None:

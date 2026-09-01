@@ -1,0 +1,14 @@
+session_id,video_path,split,expected_led_state,notes
+plugged_in_no_blink_video_v1,data/raw/microphone_sessions/plugged_in_no_blink_video_v1.mp4,train,LED_OFF,receiver plugged in with no LED blinking
+plugged_in_no_blink_video_v2,data/raw/microphone_sessions/plugged_in_no_blink_video_v2.mp4,val,LED_OFF,receiver plugged in with no LED blinking
+plugged_in_no_blink_video_v3,data/raw/microphone_sessions/plugged_in_no_blink_video_v3.mp4,test,LED_OFF,receiver plugged in with no LED blinking
+M5_v1,data/raw/microphone_sessions/M5_v1.mp4,train,LED_DOUBLE,two receiver LEDs blinking
+M5_v2,data/raw/microphone_sessions/M5_v2.mp4,train,LED_DOUBLE,two receiver LEDs blinking
+M5_v3,data/raw/microphone_sessions/M5_v3.mp4,train,LED_DOUBLE,two receiver LEDs blinking
+M5_v4,data/raw/microphone_sessions/M5_v4.mp4,val,LED_DOUBLE,two receiver LEDs blinking
+M5_v5,data/raw/microphone_sessions/M5_v5.mp4,test,LED_DOUBLE,two receiver LEDs blinking
+M6_v1,data/raw/microphone_sessions/M6_v1.mp4,train,LED_SINGLE,one receiver LED blinking; receiver already paired
+M6_v2,data/raw/microphone_sessions/M6_v2.mp4,train,LED_SINGLE,one receiver LED blinking; receiver already paired
+M6_v3,data/raw/microphone_sessions/M6_v3.mp4,train,LED_SINGLE,one receiver LED blinking; receiver already paired
+M6_v4,data/raw/microphone_sessions/M6_v4.mp4,val,LED_SINGLE,one receiver LED blinking; receiver already paired
+M6_v5,data/raw/microphone_sessions/M6_v5.mp4,test,LED_SINGLE,one receiver LED blinking; receiver already paired
