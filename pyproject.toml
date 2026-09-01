@@ -18,6 +18,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+  "label-studio>=1.21.0",
   "mediapipe==0.10.21",
   "numpy>=1.26",
   "opencv-python>=4.8",
@@ -25,6 +26,7 @@ dependencies = [
   "pydantic-settings>=2.1",
   "PyYAML>=6.0",
   "scikit-learn>=1.9.0",
+  "ultralytics>=8.4.135",
   "xgboost>=3.2.0",
 ]
 
