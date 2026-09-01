@@ -1,0 +1,12 @@
+path: data/yolo_microphone
+
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: microphone
+  1: microphone_case_closed
+  2: microphone_case_open
+  3: phone_screen_on
+  4: receiver

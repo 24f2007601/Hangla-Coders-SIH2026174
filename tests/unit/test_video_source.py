@@ -65,9 +65,11 @@ class _FakeCapture:
             matching = self._caps
         return min(
             matching,
-            key=lambda c: abs(c[0] - self._req["w"])
-            + abs(c[1] - self._req["h"])
-            + abs(c[2] - self._req["fps"]),
+            key=lambda c: (
+                abs(c[0] - self._req["w"])
+                + abs(c[1] - self._req["h"])
+                + abs(c[2] - self._req["fps"])
+            ),
         )
 
 

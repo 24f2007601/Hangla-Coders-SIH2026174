@@ -146,7 +146,7 @@ def main() -> int:
                 overlay = frame.copy()
                 cv2.putText(
                     overlay,
-                    f"fps {fps_live:.1f}  frame {frames_ok}  {actual.get('format','')}",
+                    f"fps {fps_live:.1f}  frame {frames_ok}  {actual.get('format', '')}",
                     (10, 24),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,

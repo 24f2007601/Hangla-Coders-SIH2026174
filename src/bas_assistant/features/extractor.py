@@ -191,7 +191,6 @@ def extract_frame_features(
     right_present = 0.0
 
     for hand in hands:
-
         keypoints = hand.get(
             "keypoints",
             [],
@@ -368,14 +367,12 @@ class PoseFeatureExtractor:
         # -------------------------------------------------
 
         if self._last_tracked is None:
-
             velocity = np.zeros(
                 len(TRACKED_FEATURES),
                 dtype=float,
             )
 
         else:
-
             velocity = frame.tracked - self._last_tracked
 
         self._last_tracked = frame.tracked.copy()
@@ -441,8 +438,7 @@ class PoseFeatureExtractor:
         """Return the aggregated feature vector."""
 
         if not self._ready:
-
-            raise ValueError("feature window not full; " "call push() until it returns True")
+            raise ValueError("feature window not full; call push() until it returns True")
 
         items = np.asarray(
             self._window.items(),

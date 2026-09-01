@@ -38,8 +38,7 @@ def test_load_settings_missing_file_uses_defaults(tmp_path: Path) -> None:
 def test_load_settings_reads_yaml(tmp_path: Path) -> None:
     config = tmp_path / "test.yaml"
     config.write_text(
-        "camera:\n  device: 2\n  width: 640\n"
-        "pipeline:\n  sequence_length: 15\n  classify_hop: 3\n",
+        "camera:\n  device: 2\n  width: 640\npipeline:\n  sequence_length: 15\n  classify_hop: 3\n",
         encoding="utf-8",
     )
     settings = load_settings(config)
