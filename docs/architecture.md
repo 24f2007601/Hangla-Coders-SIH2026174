@@ -91,12 +91,24 @@ Define abstract protocols wherever a component may be replaced:
 
 ```python
 class VideoSource(Protocol): ...
+
+
 class PersonDetector(Protocol): ...
+
+
 class PersonTracker(Protocol): ...
+
+
 class PoseEstimator(Protocol):
     def estimate(self, frame: np.ndarray) -> PoseResult: ...
+
+
 class FeatureExtractor(Protocol): ...
+
+
 class ActivityClassifier(Protocol): ...
+
+
 class ResultRepository(Protocol): ...
 ```
 

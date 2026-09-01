@@ -29,14 +29,12 @@ def extract_frames() -> None:
 
         # Your CSV contains repo-relative paths, while the videos are
         # currently stored outside the repository.
-        video_path = Path(
-            r"C:\Users\User\Documents\Project\BAS Assistant\Dataset\videos"
-        ) / video_path.name
+        video_path = (
+            Path(r"C:\Users\User\Documents\Project\BAS Assistant\Dataset\videos") / video_path.name
+        )
 
         if split not in {"train", "val", "test"}:
-            raise ValueError(
-                f"Invalid split {split!r} for session {session_id!r}"
-            )
+            raise ValueError(f"Invalid split {split!r} for session {session_id!r}")
 
         if not video_path.exists():
             print(f"[WARN] Video not found: {video_path}")
