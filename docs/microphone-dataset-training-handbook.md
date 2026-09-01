@@ -41,12 +41,13 @@ Use one fixed camera and one fixed plate layout for the first prototype. Frame t
 | ID | Type | Description | Required observable evidence |
 |---|---|---|---|
 | M0 | Verification-oriented Experiment Step | Verify phone powered on | The phone display is visibly illuminated for the chosen dwell time. This is the current assumption; replace it if the exact required display state becomes known. |
-| M1 | Experiment Step | Pick microphone case | Case transitions to / remains nearest to a hand. |
-| M2 | Experiment Step | Open microphone case | Open-case visual state appears. |
-| M3 | Experiment Step | Remove receiver | Receiver transitions from case region to a hand. |
-| M4 | Experiment Step | Connect receiver to phone | Receiver is handled at the phone connection region. |
+| M1 | Experiment Step | M1  Move phone to working station | Phone remains near hand, on the workstation |
+| M2 | Experiment Step | Pick microphone case | Case transitions to / remains nearest to a hand. |
+| M3 | Experiment Step | Open microphone case | Open-case visual state appears. |
+| M4 | Experiment Step | Remove receiver | Receiver transitions from case region to a hand. |
+| M5 | Experiment Step | Connect receiver to phone | Receiver is handled at the phone connection region. |
 | G1 | Verification Gate | Confirm receiver connection | Both blue receiver LEDs blink. |
-| M5 | Experiment Step | Remove one microphone | A microphone transitions from case region to a hand. |
+| M6 | Experiment Step | Remove one microphone | A microphone transitions from case region to a hand. |
 | G2 | Verification Gate | Confirm one-microphone pairing | Exactly one blue LED is steady illuminated and the other is blinking, for the chosen dwell time. |
 
 **Important:** G1 and G2 are state checks, not ordinary action labels. They must report `pending` or `unknown` when the receiver is hidden or its LEDs cannot be resolved. Never infer success from elapsed time alone.

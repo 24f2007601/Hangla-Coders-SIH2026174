@@ -30,12 +30,13 @@ Place these items on a single plate within a fixed camera view:
 | ID | Experiment Step / Verification Gate | Observable evidence required to confirm it |
 |---|---|---|
 | M0 | Verify phone powered on | **Assumption:** the phone display is visibly illuminated for a sustained period. Replace this with a more exact visual state if the intended screen is known. |
-| M1 | Pick microphone case | Case is held/closest to a hand for a dwell period. |
-| M2 | Open microphone case | Case is visibly in its open state. |
-| M3 | Remove receiver from the case | Receiver is visible and transitions from case region to a hand. |
-| M4 | Connect receiver to phone | Receiver is handled at the phone connection area. |
+| M1 | Experiment Step | M1  Move phone to working station | Phone remains near hand, on the workstation |
+| M2 | Pick microphone case | Case is held/closest to a hand for a dwell period. |
+| M3 | Open microphone case | Case is visibly in its open state. |
+| M4 | Remove receiver from the case | Receiver is visible and transitions from case region to a hand. |
+| M5 | Connect receiver to phone | Receiver is handled at the phone connection area. |
 | G1 | Verify receiver connection | Both receiver blue LEDs blink. This is a **Verification Gate** following M4, not merely an Experiment Step. |
-| M5 | Remove one microphone from the case | A microphone transitions from the case region to a hand. |
+| M6 | Remove one microphone from the case | A microphone transitions from the case region to a hand. |
 | G2 | Verify one-microphone pairing | Exactly one receiver blue LED is steadily illuminated while the other continues blinking, sustained for the chosen verification duration. |
 
 `G2` is the protocol's final success condition. Do not report it as passed when both LEDs blink, when both LEDs are steady, or when the LED state cannot be seen.
