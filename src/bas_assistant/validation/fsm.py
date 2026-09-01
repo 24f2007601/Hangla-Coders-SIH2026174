@@ -17,17 +17,17 @@ from bas_assistant.events.models import (
     EVENT_SKIPPED,
     Event,
 )
-from bas_assistant.validation.protocol import DEFAULT_TOY_PROTOCOL, ExperimentProtocol, ProtocolStep
+from bas_assistant.validation.protocol import (
+    DEFAULT_MICROPHONE_PROTOCOL,
+    ExperimentProtocol,
+    ProtocolStep,
+)
 
 
 class ExperimentFSM:
-    """Tracks Protocol State and validates each confirmed step against it.
+    """Tracks protocol state and validates confirmed steps against it."""
 
-    Protocol State is: the index of the last completed step, the set of completed
-    steps, and (derived) the expected next step.
-    """
-
-    def __init__(self, protocol: ExperimentProtocol = DEFAULT_TOY_PROTOCOL) -> None:
+    def __init__(self, protocol: ExperimentProtocol = DEFAULT_MICROPHONE_PROTOCOL) -> None:
         self._protocol = protocol
         self.reset()
 
@@ -52,7 +52,7 @@ class ExperimentFSM:
 
     @property
     def expected_next(self) -> ProtocolStep | None:
-        """The step that should happen next, or None when the protocol is complete."""
+        """The step that should happen next, or None when complete."""
         if self.is_complete:
             return None
         return self._protocol.steps[self._current_index + 1]
@@ -68,10 +68,7 @@ class ExperimentFSM:
     def on_step_confirmed(
         self, step_id: str, timestamp: float, confidence: float = 0.0
     ) -> list[Event]:
-        """Validate one confirmed step and return the events it produced.
-
-        Returns an empty list for unknown/background step ids (nothing to validate).
-        """
+        """Validate one confirmed step and return the events it produced."""
         if not self._protocol.is_known(step_id):
             return []
 
@@ -80,7 +77,6 @@ class ExperimentFSM:
         events: list[Event] = []
 
         if idx == old_index + 1:
-            # Exactly the expected next step -> confirmed.
             self._advance_through(idx)
             events.append(
                 Event(
@@ -91,8 +87,8 @@ class ExperimentFSM:
                     details=self._guidance(idx),
                 )
             )
+
         elif idx <= old_index:
-            # Already completed -> repeated.
             events.append(
                 Event(
                     timestamp=timestamp,
@@ -102,8 +98,8 @@ class ExperimentFSM:
                     details={"expected_next": self._expected_next_id()},
                 )
             )
+
         else:
-            # Jumped ahead: intervening steps are skipped; this step is out-of-sequence.
             for skipped_idx in range(old_index + 1, idx):
                 skipped = self._protocol.steps[skipped_idx]
                 events.append(
@@ -115,7 +111,9 @@ class ExperimentFSM:
                         details={"expected_next": self._protocol.steps[old_index + 1].id},
                     )
                 )
+
             self._advance_through(idx)
+
             events.append(
                 Event(
                     timestamp=timestamp,
@@ -136,13 +134,13 @@ class ExperimentFSM:
                     details={},
                 )
             )
+
         return events
 
     # -- Internals ----------------------------------------------------------
 
     def _advance_through(self, idx: int) -> None:
-        # Only the observed step is marked done; steps skipped by a forward jump are
-        # never completed, so they must not appear in `done_steps`.
+        """Mark the observed step as completed."""
         self._done.append(self._protocol.steps[idx].id)
         self._current_index = idx
 

@@ -16,7 +16,7 @@ from bas_assistant.pose.estimation import DummyPoseEstimator, MediaPipePoseEstim
 from bas_assistant.storage.repository import JsonResultRepository
 from bas_assistant.tracking.tracker import DummyPersonTracker
 from bas_assistant.validation.fsm import ExperimentFSM
-from bas_assistant.validation.protocol import DEFAULT_TOY_PROTOCOL
+from bas_assistant.validation.protocol import DEFAULT_MICROPHONE_PROTOCOL
 
 
 def build_pipeline(settings: Settings) -> ExperimentPipeline:
@@ -51,7 +51,7 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
         pose_estimator=pose_estimator,
         feature_extractor=PoseFeatureExtractor(settings.pipeline.sequence_length),
         classifier=classifier,
-        validator=ExperimentFSM(DEFAULT_TOY_PROTOCOL),
+        validator=ExperimentFSM(DEFAULT_MICROPHONE_PROTOCOL),
         event_manager=EventManager(),
         repository=JsonResultRepository(settings.database.output_dir),
     )
