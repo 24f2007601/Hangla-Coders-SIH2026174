@@ -41,7 +41,7 @@ Use one fixed camera and one fixed plate layout for the first prototype. Frame t
 | ID | Type | Description | Required observable evidence |
 |---|---|---|---|
 | M0 | Verification-oriented Experiment Step | Verify phone powered on | The phone display is visibly illuminated for the chosen dwell time. This is the current assumption; replace it if the exact required display state becomes known. |
-| M1 | Experiment Step | M1  Move phone to working station | Phone remains near hand, on the workstation |
+| M1 | Experiment Step | Move phone to working station | Phone remains near hand, on the workstation |
 | M2 | Experiment Step | Pick microphone case | Case transitions to / remains nearest to a hand. |
 | M3 | Experiment Step | Open microphone case | Open-case visual state appears. |
 | M4 | Experiment Step | Remove receiver | Receiver transitions from case region to a hand. |

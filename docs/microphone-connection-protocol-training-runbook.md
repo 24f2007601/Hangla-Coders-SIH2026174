@@ -30,7 +30,7 @@ Place these items on a single plate within a fixed camera view:
 | ID | Experiment Step / Verification Gate | Observable evidence required to confirm it |
 |---|---|---|
 | M0 | Verify phone powered on | **Assumption:** the phone display is visibly illuminated for a sustained period. Replace this with a more exact visual state if the intended screen is known. |
-| M1 | Experiment Step | M1  Move phone to working station | Phone remains near hand, on the workstation |
+| M1 | Experiment Step | Move phone to working station | Phone remains near hand, on the workstation |
 | M2 | Pick microphone case | Case is held/closest to a hand for a dwell period. |
 | M3 | Open microphone case | Case is visibly in its open state. |
 | M4 | Remove receiver from the case | Receiver is visible and transitions from case region to a hand. |
