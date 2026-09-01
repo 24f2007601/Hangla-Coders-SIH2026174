@@ -27,9 +27,7 @@ from bas_assistant.validation.protocol import (
 class ExperimentFSM:
     """Tracks protocol state and validates confirmed steps against it."""
 
-    def __init__(
-        self, protocol: ExperimentProtocol = DEFAULT_MICROPHONE_PROTOCOL
-    ) -> None:
+    def __init__(self, protocol: ExperimentProtocol = DEFAULT_MICROPHONE_PROTOCOL) -> None:
         self._protocol = protocol
         self.reset()
 
@@ -110,11 +108,7 @@ class ExperimentFSM:
                         type=EVENT_SKIPPED,
                         step=skipped.id,
                         message=f"Step {skipped.id} skipped (never observed).",
-                        details={
-                            "expected_next": self._protocol.steps[
-                                old_index + 1
-                            ].id
-                        },
+                        details={"expected_next": self._protocol.steps[old_index + 1].id},
                     )
                 )
 

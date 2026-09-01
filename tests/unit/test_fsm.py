@@ -62,10 +62,7 @@ def test_skip_step_scenario() -> None:
     events = fsm.on_step_confirmed("M5", timestamp=2.0)
 
     assert any(event.type == EVENT_SKIPPED and event.step == "M4" for event in events)
-    assert any(
-        event.type == EVENT_OUT_OF_SEQUENCE and event.step == "M5"
-        for event in events
-    )
+    assert any(event.type == EVENT_OUT_OF_SEQUENCE and event.step == "M5" for event in events)
     assert fsm.current_index == 5
 
     for step in ("M6",):
@@ -85,10 +82,7 @@ def test_jump_ahead_skips_multiple_steps() -> None:
     skipped = [event.step for event in events if event.type == EVENT_SKIPPED]
 
     assert skipped == ["M1", "M2", "M3", "M4", "M5"]
-    assert any(
-        event.type == EVENT_OUT_OF_SEQUENCE and event.step == "M6"
-        for event in events
-    )
+    assert any(event.type == EVENT_OUT_OF_SEQUENCE and event.step == "M6" for event in events)
 
 
 def test_repeated_step_detected() -> None:

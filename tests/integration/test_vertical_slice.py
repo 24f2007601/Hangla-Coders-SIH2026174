@@ -38,10 +38,7 @@ def _run_session(
 
 
 def _load(path: Path) -> list[dict]:
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").strip().splitlines()
-    ]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").strip().splitlines()]
 
 
 def _events(records: list[dict]) -> list[dict]:
@@ -57,9 +54,7 @@ def test_vertical_slice_correct_run(tmp_path: Path) -> None:
 
     assert [event["step"] for event in confirmed] == STEPS
     assert any(event["type"] == "protocol_complete" for event in events)
-    assert not any(
-        event["type"] in ("step_skipped", "out_of_sequence") for event in events
-    )
+    assert not any(event["type"] in ("step_skipped", "out_of_sequence") for event in events)
 
     summary = [record for record in _load(path) if record["kind"] == "summary"][0]
     assert summary["steps_completed"] == STEPS
@@ -98,8 +93,6 @@ def test_vertical_slice_dummy_classifier_records_unknown(tmp_path: Path) -> None
     events = _events(_load(path))
     assert not any(event["type"] == "step_confirmed" for event in events)
 
-    observations = [
-        record for record in _load(path) if record["kind"] == "observation"
-    ]
+    observations = [record for record in _load(path) if record["kind"] == "observation"]
     assert len(observations) > 0
     assert "person_id" in observations[0]
