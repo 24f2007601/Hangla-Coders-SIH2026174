@@ -1,0 +1,183 @@
+/* Space-Exploration Theme QSS for BAS Experiment Assistant */
+
+QMainWindow {
+    background-color: #070B14;
+    color: #F8FAFC;
+    font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+
+QWidget {
+    color: #F8FAFC;
+    font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+
+/* --- Group Boxes & Cards --- */
+QGroupBox {
+    background-color: #111C33;
+    border: 1px solid #1E355A;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 14px 10px 10px 10px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #00F0FF;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 2px 8px;
+    background-color: #0B1120;
+    border: 1px solid #1E2C4A;
+    border-radius: 4px;
+    color: #00F0FF;
+}
+
+/* --- Push Buttons --- */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #0F172A);
+    border: 1px solid #1E2C4A;
+    border-radius: 6px;
+    color: #F8FAFC;
+    padding: 8px 16px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2A3B52, stop:1 #162238);
+    border: 1px solid #00F0FF;
+    color: #FFFFFF;
+}
+
+QPushButton:pressed {
+    background-color: #0F172A;
+    border: 1px solid #38BDF8;
+}
+
+QPushButton:disabled {
+    background-color: #0A0F1D;
+    border: 1px solid #162035;
+    color: #64748B;
+}
+
+/* Primary Start / Play Button */
+QPushButton#btn_start {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #065F46, stop:1 #047857);
+    border: 1px solid #10B981;
+    color: #FFFFFF;
+    font-weight: 700;
+}
+QPushButton#btn_start:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #047857, stop:1 #10B981);
+    border: 1px solid #34D399;
+}
+QPushButton#btn_start:disabled {
+    background: #0D281E;
+    border: 1px solid #134E39;
+    color: #4B6B5D;
+}
+
+/* Pause Button */
+QPushButton#btn_pause {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #78350F, stop:1 #92400E);
+    border: 1px solid #F59E0B;
+    color: #FFFFFF;
+}
+QPushButton#btn_pause:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #92400E, stop:1 #B45309);
+    border: 1px solid #FCD34D;
+}
+QPushButton#btn_pause:disabled {
+    background: #1C160C;
+    border: 1px solid #382B14;
+    color: #5C4B2E;
+}
+
+/* Stop Button */
+QPushButton#btn_stop {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #7F1D1D, stop:1 #991B1B);
+    border: 1px solid #EF4444;
+    color: #FFFFFF;
+}
+QPushButton#btn_stop:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #991B1B, stop:1 #DC2626);
+    border: 1px solid #F87171;
+}
+QPushButton#btn_stop:disabled {
+    background: #1F0D0D;
+    border: 1px solid #3B1616;
+    color: #5E3232;
+}
+
+/* --- List Widgets --- */
+QListWidget {
+    background-color: #0A0F1D;
+    border: 1px solid #1E2C4A;
+    border-radius: 6px;
+    padding: 4px;
+    color: #F8FAFC;
+    font-family: 'Consolas', 'Cascadia Code', 'JetBrains Mono', monospace, sans-serif;
+    font-size: 12px;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid rgba(30, 44, 74, 0.4);
+}
+
+QListWidget::item:hover {
+    background-color: rgba(0, 240, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+/* --- Progress Bar --- */
+QProgressBar {
+    background-color: #0A0F1D;
+    border: 1px solid #1E2C4A;
+    border-radius: 5px;
+    text-align: center;
+    color: #F8FAFC;
+    font-size: 11px;
+    font-weight: 700;
+    height: 16px;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284C7, stop:1 #00F0FF);
+    border-radius: 4px;
+}
+
+/* --- Scrollbars --- */
+QScrollBar:vertical {
+    background: #070B14;
+    width: 8px;
+    margin: 0px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #1E293B;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #38BDF8;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
