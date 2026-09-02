@@ -12,7 +12,6 @@ Streamlit Community Cloud allows free public deployment directly linked to your 
 Ensure the following files are present in the root directory:
 * [`streamlit_app.py`](../streamlit_app.py): The web app entrypoint.
 * [`requirements.txt`](../requirements.txt): Minimal cloud Python dependencies using `opencv-python-headless`.
-* [`packages.txt`](../packages.txt): Debian system libraries for computer vision (`libgl1-mesa-glx`, `libglib2.0-0`).
 
 ### Step-by-Step Cloud Deployment
 
@@ -34,7 +33,7 @@ Ensure the following files are present in the root directory:
 
 4. **Deploy**:
    * Click **"Deploy!"**.
-   * Streamlit Cloud will automatically install Debian packages from `packages.txt`, install Python packages from `requirements.txt`, and start the app.
+   * Streamlit Cloud will automatically install Python packages from `requirements.txt`, and start the app.
    * On first boot, the app will automatically download the MediaPipe hand landmarker task file (`models/hand_landmarker.task`) from Google Storage.
 
 > [!NOTE]

@@ -51,7 +51,6 @@ bas-assistant/
 ├── weights/                      # Base pretrained model weights (.pt)
 ├── streamlit_app.py              # Streamlit Web Mission Control app entrypoint
 ├── requirements.txt              # Cloud deployment dependencies
-├── packages.txt                  # Linux OS system dependencies
 └── pyproject.toml                # Build config (hatchling)
 ```
 
