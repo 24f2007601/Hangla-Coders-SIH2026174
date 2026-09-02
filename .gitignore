@@ -22,6 +22,7 @@ data/processed/*
 data/samples/*
 data/*.db
 !data/raw/.gitkeep
+!data/raw/re_total_experiment_v5.mp4
 !data/processed/.gitkeep
 !data/samples/.gitkeep
 
