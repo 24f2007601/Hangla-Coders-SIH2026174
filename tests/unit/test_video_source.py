@@ -280,6 +280,19 @@ def test_source_file_source_does_not_negotiate(monkeypatch) -> None:
     source.stop()
 
 
+def test_source_exposes_frame_timestamp_after_a_successful_read(monkeypatch) -> None:
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    capture = _SourceFakeCapture([(1280, 720, 30, "MJPG")], frames=[(True, frame)])
+    _patch_videocapture(monkeypatch, capture)
+
+    source = OpenCVVideoSource("data/samples/x.mp4")
+    source.start()
+    assert source.timestamp is None
+    assert source.read() is not None
+    assert source.timestamp == 0.0
+    source.stop()
+
+
 # -- Dummy source diagnostics ---------------------------------------------
 
 

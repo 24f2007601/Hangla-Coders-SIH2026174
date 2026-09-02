@@ -243,6 +243,7 @@ class OpenCVVideoSource:
         self._capture_times_ms: deque[float] = deque(maxlen=60)
         self._frame_gaps_ms: deque[float] = deque(maxlen=60)
         self._last_read_ts: float | None = None
+        self._timestamp: float | None = None
 
     @property
     def width(self) -> int:
@@ -265,6 +266,11 @@ class OpenCVVideoSource:
     @property
     def backend_name(self) -> str:
         return self._backend_name
+
+    @property
+    def timestamp(self) -> float | None:
+        """Timestamp in seconds for the most recently returned source frame."""
+        return self._timestamp
 
     @property
     def requested_params(self) -> CameraParams | None:
@@ -324,6 +330,7 @@ class OpenCVVideoSource:
         self._capture_times_ms.clear()
         self._frame_gaps_ms.clear()
         self._last_read_ts = None
+        self._timestamp = None
 
         logger.info(
             "Camera backend=%s requested=%s actual=%s",
@@ -362,6 +369,13 @@ class OpenCVVideoSource:
         if ok and frame is not None and frame.size > 0:
             self._frames_read += 1
             self._capture_times_ms.append(capture_ms)
+            if isinstance(self._device, int):
+                self._timestamp = time.monotonic()
+            else:
+                self._timestamp = max(
+                    0.0,
+                    float(self._capture.get(cv2.CAP_PROP_POS_MSEC) or 0.0) / 1000.0,
+                )
             if self._log_interval and self._frames_read % self._log_interval == 0:
                 logger.info("Camera stats (frame %d): %s", self._frames_read, self.diagnostics())
             return frame
@@ -415,6 +429,7 @@ class DummyVideoSource:
         self._running = False
         self._frames_read = 0
         self._frames_failed = 0
+        self._timestamp: float | None = None
 
     @property
     def width(self) -> int:
@@ -428,11 +443,17 @@ class DummyVideoSource:
     def fps(self) -> float:
         return 30.0
 
+    @property
+    def timestamp(self) -> float | None:
+        """Timestamp in seconds for the most recently returned synthetic frame."""
+        return self._timestamp
+
     def start(self) -> None:
         self._frame_index = 0
         self._running = True
         self._frames_read = 0
         self._frames_failed = 0
+        self._timestamp = None
 
     def read(self) -> np.ndarray | None:
         if not self._running:
@@ -456,6 +477,7 @@ class DummyVideoSource:
         )
         self._frame_index += 1
         self._frames_read += 1
+        self._timestamp = (self._frame_index - 1) / self.fps
         return frame
 
     def stop(self) -> None:

@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from bas_assistant.config.settings import load_settings
 from bas_assistant.pipeline.factory import build_pipeline
@@ -122,7 +122,7 @@ def main() -> int:
             frame = source.read()
             if frame is None:
                 break
-            result = pipeline.process_frame(frame)
+            result = pipeline.process_frame(frame, source_timestamp=source.timestamp)
             frames_processed += 1
             for event in result.new_events:
                 print(f"[{time.strftime('%H:%M:%S')}] {event.type:>18} | {event.message}")

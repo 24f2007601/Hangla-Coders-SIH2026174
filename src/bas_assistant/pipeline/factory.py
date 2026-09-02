@@ -5,12 +5,18 @@ Keeps dependency wiring in one place so scripts and the GUI build the same pipel
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from bas_assistant.classification.classifier import DummyClassifier
 from bas_assistant.classification.xgboost_classifier import XGBoostStepClassifier
 from bas_assistant.config.settings import Settings
 from bas_assistant.detection.detector import DummyPersonDetector
+from bas_assistant.detection.object_detector import YOLOMicrophoneDetector
 from bas_assistant.events.manager import EventManager
-from bas_assistant.features.extractor import FEATURE_VECTOR_SIZE, PoseFeatureExtractor
+from bas_assistant.features.microphone import (
+    MICROPHONE_FEATURE_VECTOR_SIZE,
+    MicrophoneFeatureExtractor,
+)
 from bas_assistant.pipeline.pipeline import ExperimentPipeline
 from bas_assistant.pose.estimation import DummyPoseEstimator, MediaPipePoseEstimator
 from bas_assistant.storage.repository import JsonResultRepository
@@ -39,21 +45,28 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
     if settings.classifier.model_type == "xgboost":
         classifier = XGBoostStepClassifier(
             model_path=settings.classifier.model_path,
-            expected_feature_size=FEATURE_VECTOR_SIZE,
+            expected_feature_size=MICROPHONE_FEATURE_VECTOR_SIZE,
         )
     else:
         classifier = DummyClassifier()
+
+    object_detector = YOLOMicrophoneDetector(
+        model_path=Path("runs/detect/runs/microphone_yolo/baseline-2/weights/best.pt"),
+        confidence=0.25,
+        device=0,
+    )
 
     return ExperimentPipeline(
         settings=settings,
         detector=DummyPersonDetector(),
         tracker=DummyPersonTracker(),
         pose_estimator=pose_estimator,
-        feature_extractor=PoseFeatureExtractor(settings.pipeline.sequence_length),
+        feature_extractor=MicrophoneFeatureExtractor(settings.pipeline.sequence_length),
         classifier=classifier,
         validator=ExperimentFSM(DEFAULT_MICROPHONE_PROTOCOL),
         event_manager=EventManager(),
         repository=JsonResultRepository(settings.database.output_dir),
+        object_detector=object_detector,
     )
 
 
