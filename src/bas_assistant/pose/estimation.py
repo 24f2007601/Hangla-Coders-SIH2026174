@@ -8,6 +8,13 @@ pose therefore was removed — the MediaPipe backend now runs only the
 **HandLandmarker** (Tasks API, not the removed legacy `mp.solutions` API). Its
 `.task` model is bundled on disk — see `scripts/download_mediapipe_models.py`.
 
+Hand inference runs **synchronously** inside `estimate()`. This is deliberate:
+the features fused downstream combine hand landmarks with the YOLO detections of
+the *same* frame, so the landmarks must be exactly frame-aligned. (An earlier
+design deferred hand inference to a worker thread; once the synchronous pose
+model was removed the main loop outpaced the worker and every frame consumed
+stale landmarks, which desynced the features and broke step recognition.)
+
 The returned `PoseResult` remains the model-independent per-frame carrier:
 `keypoints` is always empty, hands live in `metadata["hands"]`, and YOLO
 detections / LED state are attached downstream by the pipeline.
@@ -16,7 +23,6 @@ detections / LED state are attached downstream by the pipeline.
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from pathlib import Path
 
@@ -36,12 +42,11 @@ class PoseEstimatorUnavailableError(RuntimeError):
 class MediaPipeHandEstimator:
     """MediaPipe Hands only (pretrained, frozen) — no body-pose model.
 
-    Hand inference runs on a dedicated worker thread in VIDEO mode so its ROI
-    tracking — which carries a detected hand through frames where the palm
-    detector momentarily fails — stays responsive. The main loop always hands
-    the worker the newest frame (stale frames are replaced) and reads back the
-    worker's latest result. A short output hold debounces residual one-off
-    misses so markers do not flicker.
+    Inference runs synchronously in VIDEO mode so hand landmarks are always
+    exactly aligned with the frame being processed (see module docstring).
+    `estimate()` must therefore be called sequentially from a single thread,
+    which the pipeline loop guarantees. A short output hold still debounces
+    residual one-off misses so markers do not flicker.
 
     Hand landmarks (21 per hand, pixel coordinates) are attached to
     `PoseResult.metadata["hands"]` so feature extraction can use hand-object
@@ -76,21 +81,13 @@ class MediaPipeHandEstimator:
         self._mp = mp
         self._vision = vision
         self._metrics = Metrics()
-        self._hands_slot: np.ndarray | None = None
-        self._hands_slot_lock = threading.Lock()
-        self._hands_pending = threading.Event()
-        self._hands_thread: threading.Thread | None = None
-        self._hands_cache: object | None = None
-        self._hands_lock = threading.Lock()
-        self._hands_stop = threading.Event()
-        self._last_hands_ts_ms = 0
-        self._hand_hold_seconds = max(hand_hold_seconds, 0.0)
         self._last_detected: list[dict] = []
         self._last_detected_ts = 0.0
         self._hands_detected = 0
         self._hands_held = 0
         self._hands_missed = 0
-        self._hands_frames_dropped = 0
+        self._last_ts_ms = 0
+        self._hand_hold_seconds = max(hand_hold_seconds, 0.0)
         self._hands = vision.HandLandmarker.create_from_options(
             vision.HandLandmarkerOptions(
                 base_options=mp_tasks.BaseOptions(model_asset_path=str(hand_model_path)),
@@ -101,19 +98,11 @@ class MediaPipeHandEstimator:
                 min_tracking_confidence=min_hand_tracking_confidence,
             )
         )
-        self._hands_thread = threading.Thread(
-            target=self._hand_worker, name="hand-landmarker", daemon=True
-        )
-        self._hands_thread.start()
         logger.info("Initialized MediaPipe hand estimator (hold=%.1fs)", self._hand_hold_seconds)
 
     def close(self) -> None:
-        """Signal the hand worker thread to stop and join it briefly."""
-        if self._hands_thread is not None:
-            self._hands_stop.set()
-            self._hands_pending.set()
-            self._hands_thread.join(timeout=2.0)
-            self._hands_thread = None
+        """Lifecycle hook kept for interface compatibility (no worker to stop)."""
+        return None
 
     @property
     def metrics(self) -> Metrics:
@@ -121,20 +110,17 @@ class MediaPipeHandEstimator:
         return self._metrics
 
     def hands_diagnostics(self) -> dict:
-        """Counts separating detector misses from stale/held landmarks and worker lag.
+        """Counts separating genuine detector misses from stale/held landmarks.
 
         - ``detected``: frames with a fresh hand detection.
         - ``held_stale``: frames where the previous detection was shown because the
           hold window had not expired (landmarks can lag the video hand here).
         - ``missed``: frames with no hand shown (genuine detector failure).
-        - ``worker_frames_dropped``: frames skipped because the hand worker thread
-          was still busy with an older frame (hand results lag the frame).
         """
         return {
             "detected": self._hands_detected,
             "held_stale": self._hands_held,
             "missed": self._hands_missed,
-            "worker_frames_dropped": self._hands_frames_dropped,
         }
 
     def _next_timestamp_ms(self, last: int) -> int:
@@ -143,31 +129,6 @@ class MediaPipeHandEstimator:
         if now <= last:
             now = last + 1
         return now
-
-    def _next_hands_timestamp_ms(self) -> int:
-        self._last_hands_ts_ms = self._next_timestamp_ms(self._last_hands_ts_ms)
-        return self._last_hands_ts_ms
-
-    def _hand_worker(self) -> None:
-        """Consume the newest frame and cache the latest hand-landmark result."""
-        while not self._hands_stop.is_set():
-            if not self._hands_pending.wait(timeout=0.1):
-                continue
-            with self._hands_slot_lock:
-                rgb = self._hands_slot
-                self._hands_slot = None
-                self._hands_pending.clear()
-            if rgb is None:
-                continue
-            try:
-                image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
-                start = time.perf_counter()
-                out = self._hands.detect_for_video(image, self._next_hands_timestamp_ms())
-                self._metrics.record("hands", time.perf_counter() - start)
-                with self._hands_lock:
-                    self._hands_cache = out
-            except Exception:  # noqa: BLE001 - log and keep the worker alive
-                logger.exception("Hand landmarker detection failed")
 
     def _exposed_hands(self, hands_out, width: int, height: int) -> list[dict]:
         """Hand landmarks with a debounce hold against one-off detection misses.
@@ -202,14 +163,18 @@ class MediaPipeHandEstimator:
         rgb = cv2_cvt_bgr_to_rgb(frame)
         ts = time.time()
 
-        with self._hands_slot_lock:
-            if self._hands_slot is not None:
-                # Worker still busy with an older frame -> it will skip this one.
-                self._hands_frames_dropped += 1
-            self._hands_slot = rgb
-            self._hands_pending.set()
-        with self._hands_lock:
-            hands_out = self._hands_cache
+        # Synchronous VIDEO-mode inference: landmarks are always frame-aligned
+        # with the YOLO detections fused downstream (see module docstring).
+        image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
+        ts_ms = self._next_timestamp_ms(self._last_ts_ms)
+        self._last_ts_ms = ts_ms
+        start = time.perf_counter()
+        try:
+            hands_out = self._hands.detect_for_video(image, ts_ms)
+        except Exception:  # noqa: BLE001 - one bad frame must not kill the loop
+            logger.exception("Hand landmarker detection failed")
+            hands_out = None
+        self._metrics.record("hands", time.perf_counter() - start)
 
         height, width = frame.shape[:2]
         hands = self._exposed_hands(hands_out, width, height)
