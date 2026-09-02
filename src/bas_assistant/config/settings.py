@@ -27,16 +27,14 @@ class CameraConfig(BaseModel):
 
 
 class PoseConfig(BaseModel):
+    """Hand-tracking backend config (body-pose landmarks are not used)."""
+
     model: Literal["mediapipe", "dummy"] = "mediapipe"
-    pose_model_path: Path = Path("models/pose_landmarker_lite.task")
     hand_model_path: Path = Path("models/hand_landmarker.task")
-    min_detection_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    min_tracking_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     min_hand_detection_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
     min_hand_presence_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
     min_hand_tracking_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
     hand_hold_seconds: float = Field(default=0.5, ge=0.0, le=5.0)
-    with_hands: bool = True
 
 
 class ClassifierConfig(BaseModel):

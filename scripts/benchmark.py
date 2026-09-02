@@ -30,7 +30,7 @@ from bas_assistant.storage.repository import JsonResultRepository
 from bas_assistant.tracking.tracker import DummyPersonTracker
 from bas_assistant.utils.logging import setup_logging
 from bas_assistant.validation.fsm import ExperimentFSM
-from bas_assistant.validation.protocol import DEFAULT_TOY_PROTOCOL
+from bas_assistant.validation.protocol import DEFAULT_MICROPHONE_PROTOCOL
 from bas_assistant.video.source import DummyVideoSource
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def main() -> int:
         pose_estimator=DummyPoseEstimator(motion=0.0),
         feature_extractor=PoseFeatureExtractor(args.sequence_length),
         classifier=DummyClassifier(),
-        validator=ExperimentFSM(DEFAULT_TOY_PROTOCOL),
+        validator=ExperimentFSM(DEFAULT_MICROPHONE_PROTOCOL),
         event_manager=EventManager(),
         repository=JsonResultRepository(Path("/tmp/bas_benchmark")),
     )

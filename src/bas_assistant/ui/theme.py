@@ -41,8 +41,21 @@ EVENT_TYPE_COLORS: dict[str, tuple[str, str, str]] = {
     "out_of_sequence": (ACCENT_RED, "OUT OF SEQ", "[INVALID]"),
     "protocol_complete": (ACCENT_CYAN, "COMPLETE", "[COMPLETE]"),
     "session_started": (ACCENT_BLUE, "SESSION", "[SESSION]"),
+    "session_ended": (ACCENT_BLUE, "SESSION", "[SESSION]"),
+    "gate_g1_pending": (ACCENT_AMBER, "GATE G1", "[GATE]"),
+    "gate_g1_passed": (ACCENT_EMERALD, "GATE G1", "[GATE]"),
+    "gate_g2_pending": (ACCENT_AMBER, "GATE G2", "[GATE]"),
+    "gate_g2_passed": (ACCENT_EMERALD, "GATE G2", "[GATE]"),
     "system_error": (ACCENT_RED, "ERROR", "[ERROR]"),
     "unknown": (TEXT_MUTED, "INFO", "[INFO]"),
+}
+
+# LED state -> display color (receiver LED indicators).
+LED_STATE_COLORS: dict[str, str] = {
+    "blinking": ACCENT_EMERALD,
+    "steady": ACCENT_BLUE,
+    "off": TEXT_MUTED,
+    "unknown": ACCENT_AMBER,
 }
 
 
@@ -268,6 +281,7 @@ __all__ = [
     "BORDER_CARD",
     "BORDER_MUTED",
     "EVENT_TYPE_COLORS",
+    "LED_STATE_COLORS",
     "TEXT_ACCENT",
     "TEXT_MUTED",
     "TEXT_PRIMARY",

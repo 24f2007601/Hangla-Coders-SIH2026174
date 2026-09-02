@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from bas_assistant.pose.estimation import MediaPipePoseEstimator
+from bas_assistant.pose.estimation import MediaPipeHandEstimator
 
 
 class _Category:
@@ -32,7 +32,7 @@ class _HandsOut:
 def test_extract_hands_tasks_api_list_of_categories() -> None:
     """Tasks API (mediapipe >= 1.0) hands: handedness is a list of Category."""
     out = _HandsOut(handedness=[[_Category("Left", 0.93)]])
-    hands = MediaPipePoseEstimator._extract_hands(out, width=100, height=100)
+    hands = MediaPipeHandEstimator._extract_hands(out, width=100, height=100)
     assert len(hands) == 1
     assert hands[0]["handedness"] == "Left"
     assert hands[0]["confidence"] == pytest.approx(0.93)
@@ -43,20 +43,20 @@ def test_extract_hands_tasks_api_list_of_categories() -> None:
 def test_extract_hands_legacy_classifications_shape() -> None:
     """Older mediapipe shape: handedness is a Classifications wrapper."""
     out = _HandsOut(handedness=[_Classifications([_Category("Right", 0.88)])])
-    hands = MediaPipePoseEstimator._extract_hands(out, width=200, height=100)
+    hands = MediaPipeHandEstimator._extract_hands(out, width=200, height=100)
     assert hands[0]["handedness"] == "Right"
     assert hands[0]["confidence"] == pytest.approx(0.88)
 
 
 def test_extract_hands_empty_result() -> None:
     out = _HandsOut(handedness=[])
-    assert MediaPipePoseEstimator._extract_hands(out, width=100, height=100) == []
-    assert MediaPipePoseEstimator._extract_hands(None, width=100, height=100) == []
+    assert MediaPipeHandEstimator._extract_hands(out, width=100, height=100) == []
+    assert MediaPipeHandEstimator._extract_hands(None, width=100, height=100) == []
 
 
 def test_extract_hands_missing_handedness_falls_back() -> None:
     out = _HandsOut(handedness=[[]])
-    hands = MediaPipePoseEstimator._extract_hands(out, width=100, height=100)
+    hands = MediaPipeHandEstimator._extract_hands(out, width=100, height=100)
     assert hands[0]["handedness"] == "Unknown"
     assert hands[0]["confidence"] == 1.0
 
@@ -72,7 +72,7 @@ def test_draw_hands_is_noop_without_metadata() -> None:
 
 
 def test_next_timestamp_ms_is_strictly_increasing(monkeypatch) -> None:
-    est = object.__new__(MediaPipePoseEstimator)
+    est = object.__new__(MediaPipeHandEstimator)
     est._last_ts_ms = 0
 
     monkeypatch.setattr(time, "monotonic", lambda: 100.0)
@@ -89,7 +89,7 @@ def test_next_timestamp_ms_is_strictly_increasing(monkeypatch) -> None:
 
 
 def test_next_timestamp_ms_never_repeats_on_same_clock_tick(monkeypatch) -> None:
-    est = object.__new__(MediaPipePoseEstimator)
+    est = object.__new__(MediaPipeHandEstimator)
     est._last_ts_ms = 0
 
     monkeypatch.setattr(time, "monotonic", lambda: 100.0)
@@ -99,8 +99,8 @@ def test_next_timestamp_ms_never_repeats_on_same_clock_tick(monkeypatch) -> None
     assert second == first + 1
 
 
-def _hold_estimator() -> MediaPipePoseEstimator:
-    est = object.__new__(MediaPipePoseEstimator)
+def _hold_estimator() -> MediaPipeHandEstimator:
+    est = object.__new__(MediaPipeHandEstimator)
     est._last_detected = []
     est._last_detected_ts = 0.0
     est._hand_hold_seconds = 0.5

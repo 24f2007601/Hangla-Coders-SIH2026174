@@ -18,7 +18,7 @@ from bas_assistant.features.microphone import (
     MicrophoneFeatureExtractor,
 )
 from bas_assistant.pipeline.pipeline import ExperimentPipeline
-from bas_assistant.pose.estimation import DummyPoseEstimator, MediaPipePoseEstimator
+from bas_assistant.pose.estimation import DummyPoseEstimator, MediaPipeHandEstimator
 from bas_assistant.storage.repository import JsonResultRepository
 from bas_assistant.tracking.tracker import DummyPersonTracker
 from bas_assistant.validation.fsm import ExperimentFSM
@@ -28,16 +28,12 @@ from bas_assistant.validation.protocol import DEFAULT_MICROPHONE_PROTOCOL
 def build_pipeline(settings: Settings) -> ExperimentPipeline:
     """Assemble an ExperimentPipeline from typed settings (all real PoC components)."""
     if settings.pose.model == "mediapipe":
-        pose_estimator = MediaPipePoseEstimator(
-            pose_model_path=settings.pose.pose_model_path,
+        pose_estimator = MediaPipeHandEstimator(
             hand_model_path=settings.pose.hand_model_path,
-            min_detection_confidence=settings.pose.min_detection_confidence,
-            min_tracking_confidence=settings.pose.min_tracking_confidence,
             min_hand_detection_confidence=settings.pose.min_hand_detection_confidence,
             min_hand_presence_confidence=settings.pose.min_hand_presence_confidence,
             min_hand_tracking_confidence=settings.pose.min_hand_tracking_confidence,
             hand_hold_seconds=settings.pose.hand_hold_seconds,
-            with_hands=settings.pose.with_hands,
         )
     else:
         pose_estimator = DummyPoseEstimator()
@@ -50,10 +46,16 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
     else:
         classifier = DummyClassifier()
 
+    # Prefer CUDA when available; fall back to CPU so the pipeline still runs
+    # on machines without a GPU (device selection only — model/weights unchanged).
+    import torch
+
+    yolo_device = 0 if torch.cuda.is_available() else "cpu"
+
     object_detector = YOLOMicrophoneDetector(
         model_path=Path("runs/detect/runs/microphone_yolo/baseline-2/weights/best.pt"),
         confidence=0.25,
-        device=0,
+        device=yolo_device,
     )
 
     return ExperimentPipeline(

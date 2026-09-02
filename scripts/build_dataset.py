@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 
 from bas_assistant.features.extractor import PoseFeatureExtractor
-from bas_assistant.pose.estimation import MediaPipePoseEstimator
+from bas_assistant.pose.estimation import MediaPipeHandEstimator
 
 
 def build_dataset(
@@ -21,7 +21,7 @@ def build_dataset(
 ) -> int:
     """Extract sliding-window feature vectors from a labelled video."""
 
-    estimator = MediaPipePoseEstimator()
+    estimator = MediaPipeHandEstimator()
     extractor = PoseFeatureExtractor(sequence_length=sequence_length)
 
     cap = cv2.VideoCapture(str(video_path))

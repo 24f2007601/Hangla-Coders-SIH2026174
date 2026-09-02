@@ -2,10 +2,13 @@
 
 Implements:
 - `VideoFeedWidget`: Live camera viewport with HUD overlays.
-- `StepNavigatorWidget`: Protocol step tracker (Previous, Current with glow, Next).
+- `ProtocolProgressWidget`: Full protocol strip (M0-M6 with G1/G2 interleaved)
+  showing completed / active / pending state per entry plus a confidence gauge.
+- `VerificationGatesWidget`: G1/G2 gate badges, receiver LED indicators and
+  receiver detection status.
 - `ActivityLogWidget`: Color-coded activity and alert log stream with status badges.
 - `TelemetryChip`: High-contrast metric cards with tabular numerical displays.
-- `ControlDeckWidget`: Mission control bar with START/PAUSE/STOP and toggles.
+- `ControlDeckWidget`: Mission control bar with START/PAUSE/STOP/RESET and toggles.
 """
 
 from __future__ import annotations
@@ -30,9 +33,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from bas_assistant.ui.state import gate_badge_states
 from bas_assistant.ui.theme import (
     ACCENT_AMBER,
-    ACCENT_BLUE,
     ACCENT_CYAN,
     ACCENT_EMERALD,
     ACCENT_RED,
@@ -42,11 +45,18 @@ from bas_assistant.ui.theme import (
     BORDER_CARD,
     BORDER_MUTED,
     EVENT_TYPE_COLORS,
+    LED_STATE_COLORS,
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
-from bas_assistant.validation.protocol import DEFAULT_TOY_PROTOCOL, ExperimentProtocol
+from bas_assistant.validation.protocol import (
+    DEFAULT_MICROPHONE_PROTOCOL,
+    GATE_ONE_MICROPHONE_PAIRED,
+    GATE_RECEIVER_CONNECTED,
+    STEP_REMOVE_RECEIVER,
+    ExperimentProtocol,
+)
 
 
 class TelemetryChip(QFrame):
@@ -153,6 +163,12 @@ class VideoFeedWidget(QFrame):
             f"color: {TEXT_SECONDARY}; font-size: 11px; font-weight: 600; letter-spacing: 1.5px;"
         )
 
+        self._source_title = QLabel("SOURCE: --")
+        self._source_title.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 10px; font-weight: 700; "
+            f"letter-spacing: 1px; font-family: monospace;"
+        )
+
         self._fps_hud = QLabel("0.0 FPS")
         self._fps_hud.setStyleSheet(
             f"color: {ACCENT_CYAN}; font-size: 11px; font-weight: 700; font-family: monospace;"
@@ -160,6 +176,7 @@ class VideoFeedWidget(QFrame):
 
         hud_bar.addWidget(self._status_pill)
         hud_bar.addWidget(self._feed_title)
+        hud_bar.addWidget(self._source_title)
         hud_bar.addStretch(1)
         hud_bar.addWidget(self._fps_hud)
 
@@ -172,6 +189,10 @@ class VideoFeedWidget(QFrame):
 
         main_layout.addLayout(hud_bar)
         main_layout.addWidget(self._video_label, 1)
+
+    def set_source_label(self, text: str) -> None:
+        """Set the video source indicator (e.g. 'WEBCAM 0' / 'FILE' / 'SIMULATED')."""
+        self._source_title.setText(f"SOURCE: {text.upper()}")
 
     def set_live_state(self, live: bool, paused: bool = False) -> None:
         self._is_live = live
@@ -271,120 +292,111 @@ class VideoFeedWidget(QFrame):
         self._video_label.setPixmap(pix)
 
 
-class StepItemCard(QFrame):
-    """A card row representing a single protocol step state (Prev, Current, Next)."""
+# Entry states for the protocol progress strip.
+STATE_DONE = "done"
+STATE_ACTIVE = "active"
+STATE_PENDING = "pending"
+STATE_GATE_PASSED = "gate_passed"
+STATE_GATE_PENDING = "gate_pending"
+STATE_GATE_NOT_REQUIRED = "gate_not_required"
 
-    def __init__(self, step_role: str, parent: QWidget | None = None) -> None:
+# (bg, border, text_color, badge_text) per entry state.
+_ENTRY_STATE_STYLES: dict[str, tuple[str, str, str, str]] = {
+    STATE_DONE: ("#064E3B", ACCENT_EMERALD, "#34D399", "DONE"),
+    STATE_ACTIVE: ("rgba(0, 240, 255, 0.10)", ACCENT_CYAN, ACCENT_CYAN, "ACTIVE"),
+    STATE_PENDING: (BG_CARD, BORDER_CARD, TEXT_MUTED, "PENDING"),
+    STATE_GATE_PASSED: ("#064E3B", ACCENT_EMERALD, "#34D399", "PASSED"),
+    STATE_GATE_PENDING: ("#241A0B", ACCENT_AMBER, ACCENT_AMBER, "PENDING"),
+    STATE_GATE_NOT_REQUIRED: (BG_CARD, BORDER_CARD, TEXT_MUTED, "WAIT"),
+}
+
+
+class ProtocolRowItem(QFrame):
+    """A compact row representing one protocol entry (step or verification gate)."""
+
+    def __init__(
+        self, entry_id: str, name: str, is_gate: bool, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
-        self._step_role = step_role  # "PREVIOUS", "CURRENT", "NEXT"
-        self._is_active = step_role == "CURRENT"
+        self._entry_id = entry_id
+        self._name = name
+        self._state = STATE_GATE_NOT_REQUIRED if is_gate else STATE_PENDING
+
+        self.setFixedHeight(34)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 2, 10, 2)
+        layout.setSpacing(8)
 
-        # Status icon / badge
-        self._badge = QLabel(step_role[:4])
-        self._badge.setFixedWidth(64)
+        self._badge = QLabel(entry_id)
+        self._badge.setFixedWidth(36)
         self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # Step details layout
-        details_layout = QVBoxLayout()
-        details_layout.setContentsMargins(0, 0, 0, 0)
-        details_layout.setSpacing(2)
-
-        self._lbl_role = QLabel(f"{step_role} STEP")
-        self._lbl_role.setStyleSheet(
-            f"color: {TEXT_MUTED}; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        self._badge.setStyleSheet(
+            f"background-color: #0E243A; color: {ACCENT_CYAN}; font-weight: 800; "
+            f"font-size: 11px; border-radius: 4px; padding: 3px 0; "
+            f"font-family: monospace; border: 1px solid {BORDER_MUTED};"
         )
 
-        self._lbl_name = QLabel("--")
-        self._lbl_name.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 13px; font-weight: 600;")
-        self._lbl_name.setWordWrap(True)
+        self._lbl_name = QLabel(name)
+        self._lbl_name.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px; font-weight: 500;")
 
-        details_layout.addWidget(self._lbl_role)
-        details_layout.addWidget(self._lbl_name)
+        self._lbl_state = QLabel("--")
+        self._lbl_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_state.setFixedWidth(72)
 
         layout.addWidget(self._badge)
-        layout.addLayout(details_layout, 1)
+        layout.addWidget(self._lbl_name, 1)
+        layout.addWidget(self._lbl_state)
 
-        self.update_style()
+        self._apply_state()
 
-    def set_step(self, step_text: str, is_completed: bool = False) -> None:
-        self._lbl_name.setText(step_text)
-        self.update_style(is_completed=is_completed)
+    @property
+    def entry_id(self) -> str:
+        return self._entry_id
 
-    def update_style(self, is_completed: bool = False) -> None:
-        if self._step_role == "CURRENT":
-            self.setStyleSheet(
-                "StepItemCard {"
-                "  background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-                "    stop:0 rgba(0, 240, 255, 0.12), stop:1 rgba(17, 28, 51, 0.9));"
-                f"  border: 1.5px solid {ACCENT_CYAN};"
-                "  border-radius: 8px;"
-                "}"
-            )
-            self._badge.setStyleSheet(
-                f"background-color: {ACCENT_CYAN}; color: #04131E; font-weight: 800; "
-                f"font-size: 11px; border-radius: 4px; padding: 4px;"
-            )
-            self._badge.setText("[ ACTIVE ]")
-            self._lbl_role.setStyleSheet(
-                f"color: {ACCENT_CYAN}; font-size: 10px; font-weight: 800; letter-spacing: 1.2px;"
-            )
-            self._lbl_name.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: 700;")
-        elif self._step_role == "PREVIOUS":
-            self.setStyleSheet(
-                f"StepItemCard {{"
-                f"  background-color: {BG_CARD};"
-                f"  border: 1px solid {BORDER_CARD};"
-                f"  border-radius: 8px;"
-                f"}}"
-            )
-            if is_completed:
-                self._badge.setStyleSheet(
-                    "background-color: #064E3B; color: #34D399; font-weight: 700; "
-                    "font-size: 11px; border-radius: 4px; padding: 4px;"
-                )
-                self._badge.setText("[ DONE ]")
-            else:
-                self._badge.setStyleSheet(
-                    f"background-color: #1E293B; color: {TEXT_MUTED}; font-weight: 700; "
-                    f"font-size: 11px; border-radius: 4px; padding: 4px;"
-                )
-                self._badge.setText("[ -- ]")
+    def set_state(self, state: str) -> None:
+        if state not in _ENTRY_STATE_STYLES:
+            return
+        self._state = state
+        self._apply_state()
+
+    def _apply_state(self) -> None:
+        bg, border, color, badge_text = _ENTRY_STATE_STYLES[self._state]
+        self.setStyleSheet(
+            f"ProtocolRowItem {{"
+            f"  background-color: {bg};"
+            f"  border: 1px solid {border};"
+            f"  border-radius: 6px;"
+            f"}}"
+        )
+        self._lbl_state.setText(badge_text)
+        self._lbl_state.setStyleSheet(
+            f"background-color: {bg}; color: {color}; font-weight: 800; "
+            f"font-size: 10px; letter-spacing: 1px; border-radius: 4px; padding: 2px 4px;"
+        )
+        if self._state == STATE_ACTIVE:
+            self._lbl_name.setStyleSheet("color: #FFFFFF; font-size: 12px; font-weight: 700;")
+        else:
             self._lbl_name.setStyleSheet(
                 f"color: {TEXT_SECONDARY}; font-size: 12px; font-weight: 500;"
             )
-        else:  # NEXT
-            self.setStyleSheet(
-                f"StepItemCard {{"
-                f"  background-color: {BG_CARD};"
-                f"  border: 1px dashed {BORDER_MUTED};"
-                f"  border-radius: 8px;"
-                f"}}"
-            )
-            self._badge.setStyleSheet(
-                f"background-color: #1E293B; color: {ACCENT_BLUE}; font-weight: 700; "
-                f"font-size: 11px; border-radius: 4px; padding: 4px;"
-            )
-            self._badge.setText("[ NEXT ]")
-            self._lbl_name.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; font-weight: 500;")
 
 
-class StepNavigatorWidget(QFrame):
-    """Protocol step tracker matching the wireframe (Previous, Current, Next, Confidence)."""
+class ProtocolProgressWidget(QFrame):
+    """Full protocol progression strip: M0-M6 with G1/G2 interleaved at their
+    runtime positions (G1 between 'Remove receiver' and 'Connect receiver',
+    G2 after the final step), plus a classifier confidence gauge."""
 
     def __init__(
         self,
-        protocol: ExperimentProtocol = DEFAULT_TOY_PROTOCOL,
+        protocol: ExperimentProtocol = DEFAULT_MICROPHONE_PROTOCOL,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._protocol = protocol
 
         self.setStyleSheet(
-            f"StepNavigatorWidget {{"
+            f"ProtocolProgressWidget {{"
             f"  background-color: {BG_CARD};"
             f"  border: 1px solid {BORDER_CARD};"
             f"  border-radius: 8px;"
@@ -392,17 +404,16 @@ class StepNavigatorWidget(QFrame):
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(4)
 
-        # Header with protocol info
         header_layout = QHBoxLayout()
-        lbl_title = QLabel("PROTOCOL STEP PROGRESSION")
+        lbl_title = QLabel("PROTOCOL PROGRESSION")
         lbl_title.setStyleSheet(
             f"color: {ACCENT_CYAN}; font-size: 11px; font-weight: 700; letter-spacing: 1px;"
         )
 
-        self._step_counter = QLabel("0 / 8")
+        self._step_counter = QLabel("0 / 7")
         self._step_counter.setStyleSheet(
             f"color: {TEXT_SECONDARY}; font-size: 11px; font-family: monospace; font-weight: 700;"
         )
@@ -411,18 +422,21 @@ class StepNavigatorWidget(QFrame):
         header_layout.addStretch(1)
         header_layout.addWidget(self._step_counter)
 
-        # 3-step cards
-        self._prev_card = StepItemCard("PREVIOUS")
-        self._curr_card = StepItemCard("CURRENT")
-        self._next_card = StepItemCard("NEXT")
+        layout.addLayout(header_layout)
+
+        self._rows: list[ProtocolRowItem] = []
+        for entry_id, name, is_gate in self._display_entries():
+            row = ProtocolRowItem(entry_id, name, is_gate)
+            self._rows.append(row)
+            layout.addWidget(row)
 
         # Confidence Meter Section
         conf_layout = QVBoxLayout()
-        conf_layout.setContentsMargins(0, 4, 0, 0)
+        conf_layout.setContentsMargins(0, 6, 0, 0)
         conf_layout.setSpacing(4)
 
         conf_header = QHBoxLayout()
-        conf_label = QLabel("CONFIDENCE GAUGE")
+        conf_label = QLabel("STEP CONFIDENCE")
         conf_label.setStyleSheet(
             f"color: {TEXT_MUTED}; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
         )
@@ -445,65 +459,65 @@ class StepNavigatorWidget(QFrame):
         conf_layout.addLayout(conf_header)
         conf_layout.addWidget(self._conf_bar)
 
-        layout.addLayout(header_layout)
-        layout.addWidget(self._prev_card)
-        layout.addWidget(self._curr_card)
-        layout.addWidget(self._next_card)
         layout.addLayout(conf_layout)
 
-        self.reset_steps()
+        self.reset_progress()
 
-    def reset_steps(self) -> None:
-        self._prev_card.set_step("None (Start of protocol)", is_completed=False)
-        first_step = self._protocol.steps[0] if self._protocol.steps else None
-        second_step = self._protocol.steps[1] if len(self._protocol.steps) > 1 else None
+    def _display_entries(self) -> list[tuple[str, str, bool]]:
+        """Ordered (id, name, is_gate) entries matching the runtime protocol flow."""
+        entries: list[tuple[str, str, bool]] = []
+        for step in self._protocol.steps:
+            entries.append((step.id, step.name, False))
+            # G1 is armed by the pipeline immediately after the receiver is
+            # removed (before the receiver is connected) per the protocol flow
+            # M0..M4 -> G1 -> M5 -> M6 -> G2.
+            if step.id == STEP_REMOVE_RECEIVER:
+                gate = self._protocol.gate(GATE_RECEIVER_CONNECTED)
+                if gate:
+                    entries.append((gate.id, gate.name, True))
+        # G2 is the final verification after the last step.
+        final_gate = self._protocol.gate(GATE_ONE_MICROPHONE_PAIRED)
+        if final_gate:
+            entries.append((final_gate.id, final_gate.name, True))
+        return entries
 
-        self._curr_card.set_step(f"{first_step.id}: {first_step.name}" if first_step else "Idle")
-        self._next_card.set_step(f"{second_step.id}: {second_step.name}" if second_step else "None")
+    def reset_progress(self) -> None:
+        for row in self._rows:
+            is_gate = row.entry_id.startswith("G")
+            row.set_state(STATE_GATE_NOT_REQUIRED if is_gate else STATE_PENDING)
         self._step_counter.setText(f"0 / {len(self._protocol.steps)}")
         self.update_confidence(0.0)
 
-    def update_steps(
+    def update_progress(
         self,
-        current_step_name: str,
-        current_step_id: str | None = None,
         done_steps: list[str] | None = None,
-        expected_next_name: str | None = None,
+        expected_next_id: str | None = None,
+        gate_status: str = "not_required",
+        is_complete: bool = False,
     ) -> None:
         done = done_steps or []
-        done_count = len(done)
+        gate_states = gate_badge_states(gate_status)
         total = len(self._protocol.steps)
-        self._step_counter.setText(f"{done_count} / {total}")
-
-        # Determine Previous Step
-        if done:
-            last_done_id = done[-1]
-            last_step_obj = self._protocol.step(last_done_id)
-            prev_text = f"{last_done_id}: {last_step_obj.name}" if last_step_obj else last_done_id
-            self._prev_card.set_step(prev_text, is_completed=True)
-        else:
-            self._prev_card.set_step("--", is_completed=False)
-
-        # Current active step display
-        curr_display = (
-            f"{current_step_id}: {current_step_name}" if current_step_id else current_step_name
+        self._step_counter.setText(
+            f"{total} / {total}" if is_complete else f"{len(done)} / {total}"
         )
-        self._curr_card.set_step(curr_display)
 
-        # Next Step
-        if expected_next_name and expected_next_name != "None":
-            self._next_card.set_step(expected_next_name)
-        else:
-            # Derive from protocol if possible
-            if current_step_id and self._protocol.is_known(current_step_id):
-                idx = self._protocol.index_of(current_step_id)
-                if idx + 1 < len(self._protocol.steps):
-                    next_obj = self._protocol.steps[idx + 1]
-                    self._next_card.set_step(f"{next_obj.id}: {next_obj.name}")
+        for row in self._rows:
+            entry_id = row.entry_id
+            if entry_id in gate_states:
+                phase = gate_states[entry_id]
+                if phase == "PASSED":
+                    row.set_state(STATE_GATE_PASSED)
+                elif phase == "PENDING":
+                    row.set_state(STATE_GATE_PENDING)
                 else:
-                    self._next_card.set_step("Protocol Complete")
+                    row.set_state(STATE_GATE_NOT_REQUIRED)
+            elif entry_id in done:
+                row.set_state(STATE_DONE)
+            elif entry_id == expected_next_id and not is_complete:
+                row.set_state(STATE_ACTIVE)
             else:
-                self._next_card.set_step("--")
+                row.set_state(STATE_PENDING)
 
     def update_confidence(self, confidence: float) -> None:
         pct = int(max(0.0, min(1.0, confidence)) * 100)
@@ -534,6 +548,190 @@ class StepNavigatorWidget(QFrame):
             f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, {chunk_gradient});"
             f"  border-radius: 4px;"
             f"}}"
+        )
+
+
+class VerificationGatesWidget(QFrame):
+    """Verification-gate panel: G1/G2 status badges, receiver LED indicator
+    lamps, and receiver detection status driven entirely by pipeline state."""
+
+    def __init__(
+        self,
+        protocol: ExperimentProtocol = DEFAULT_MICROPHONE_PROTOCOL,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._protocol = protocol
+
+        self.setStyleSheet(
+            f"VerificationGatesWidget {{"
+            f"  background-color: {BG_CARD};"
+            f"  border: 1px solid {BORDER_CARD};"
+            f"  border-radius: 8px;"
+            f"}}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("VERIFICATION GATES")
+        title.setStyleSheet(
+            f"color: {ACCENT_CYAN}; font-size: 11px; font-weight: 700; letter-spacing: 1px;"
+        )
+        layout.addWidget(title)
+
+        gate_layout = QHBoxLayout()
+        gate_layout.setSpacing(8)
+
+        g1 = self._protocol.gate(GATE_RECEIVER_CONNECTED)
+        g2 = self._protocol.gate(GATE_ONE_MICROPHONE_PAIRED)
+
+        self._g1_badge = self._make_gate_badge("G1", g1.name if g1 else "Verify connection")
+        self._g2_badge = self._make_gate_badge("G2", g2.name if g2 else "Verify pairing")
+        gate_layout.addWidget(self._g1_badge, 1)
+        gate_layout.addWidget(self._g2_badge, 1)
+        layout.addLayout(gate_layout)
+
+        # LED indicators
+        led_header = QLabel("RECEIVER LEDS")
+        led_header.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        layout.addWidget(led_header)
+
+        led_layout = QHBoxLayout()
+        led_layout.setSpacing(8)
+
+        self._led_labels: dict[str, QLabel] = {}
+        for side in ("LEFT", "RIGHT"):
+            lamp = QLabel(side)
+            lamp.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            led_layout.addWidget(lamp, 1)
+            self._led_labels[side] = lamp
+
+        layout.addLayout(led_layout)
+
+        # Receiver status + guidance
+        self._receiver_label = QLabel("RECEIVER: NOT DETECTED")
+        self._receiver_label.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 11px; font-weight: 700; font-family: monospace;"
+        )
+        layout.addWidget(self._receiver_label)
+
+        self._guidance_label = QLabel(g1.description if g1 else "")
+        self._guidance_label.setWordWrap(True)
+        self._guidance_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px;")
+        layout.addWidget(self._guidance_label)
+
+        self.reset_gates()
+
+    @staticmethod
+    def _make_gate_badge(gate_id: str, name: str) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName(f"gate_{gate_id}")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(2)
+
+        lbl_id = QLabel(gate_id)
+        lbl_id.setStyleSheet(
+            f"color: {ACCENT_CYAN}; font-size: 12px; font-weight: 800; font-family: monospace;"
+        )
+        lbl_name = QLabel(name)
+        lbl_name.setWordWrap(True)
+        lbl_name.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
+
+        lbl_status = QLabel("NOT REQUIRED")
+        lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_status.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 10px; font-weight: 800; letter-spacing: 1px;"
+        )
+
+        layout.addWidget(lbl_id)
+        layout.addWidget(lbl_name)
+        layout.addWidget(lbl_status)
+        frame._lbl_status = lbl_status  # noqa: SLF001 - internal widget handle
+        return frame
+
+    def reset_gates(self) -> None:
+        self._set_gate_badge(self._g1_badge, "NOT REQUIRED", TEXT_MUTED, BG_CARD, BORDER_CARD)
+        self._set_gate_badge(self._g2_badge, "NOT REQUIRED", TEXT_MUTED, BG_CARD, BORDER_CARD)
+        self._set_led_lamp("LEFT", "unknown")
+        self._set_led_lamp("RIGHT", "unknown")
+        self._receiver_label.setText("RECEIVER: NOT DETECTED")
+        self._receiver_label.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 11px; font-weight: 700; font-family: monospace;"
+        )
+
+    def update_gates(
+        self,
+        gate_status: str = "not_required",
+        led: dict[str, Any] | None = None,
+    ) -> None:
+        led = led or {}
+        states = gate_badge_states(gate_status)
+
+        phase_g1 = states.get(GATE_RECEIVER_CONNECTED, "NOT_REQUIRED")
+        if phase_g1 == "PASSED":
+            self._set_gate_badge(self._g1_badge, "PASSED", "#34D399", "#064E3B", ACCENT_EMERALD)
+        elif phase_g1 == "PENDING":
+            self._set_gate_badge(self._g1_badge, "PENDING", ACCENT_AMBER, "#241A0B", ACCENT_AMBER)
+        else:
+            self._set_gate_badge(self._g1_badge, "NOT REQUIRED", TEXT_MUTED, BG_CARD, BORDER_CARD)
+
+        phase_g2 = states.get(GATE_ONE_MICROPHONE_PAIRED, "NOT_REQUIRED")
+        if phase_g2 == "PASSED":
+            self._set_gate_badge(self._g2_badge, "PASSED", "#34D399", "#064E3B", ACCENT_EMERALD)
+        elif phase_g2 == "PENDING":
+            self._set_gate_badge(self._g2_badge, "PENDING", ACCENT_AMBER, "#241A0B", ACCENT_AMBER)
+        else:
+            self._set_gate_badge(self._g2_badge, "NOT REQUIRED", TEXT_MUTED, BG_CARD, BORDER_CARD)
+
+        self._set_led_lamp("LEFT", str(led.get("left", "unknown")))
+        self._set_led_lamp("RIGHT", str(led.get("right", "unknown")))
+
+        if led.get("receiver_detected"):
+            confidence = float(led.get("receiver_confidence", 0.0))
+            self._receiver_label.setText(f"RECEIVER: DETECTED ({confidence * 100:.0f}%)")
+            self._receiver_label.setStyleSheet(
+                f"color: {ACCENT_EMERALD}; font-size: 11px; font-weight: 700; "
+                f"font-family: monospace;"
+            )
+        else:
+            self._receiver_label.setText("RECEIVER: NOT DETECTED")
+            self._receiver_label.setStyleSheet(
+                f"color: {ACCENT_AMBER}; font-size: 11px; font-weight: 700; "
+                f"font-family: monospace;"
+            )
+
+    @staticmethod
+    def _set_gate_badge(badge: QFrame, text: str, color: str, bg: str, border: str) -> None:
+        lbl: QLabel = badge._lbl_status  # noqa: SLF001 - internal widget handle
+        lbl.setText(text)
+        lbl.setStyleSheet(
+            f"color: {color}; font-size: 10px; font-weight: 800; letter-spacing: 1px; "
+            f"background-color: {bg}; border-radius: 4px; padding: 2px;"
+        )
+        badge.setStyleSheet(
+            f"QFrame#gate_G1, QFrame#gate_G2 {{"
+            f"  background-color: {bg};"
+            f"  border: 1px solid {border};"
+            f"  border-radius: 6px;"
+            f"}}"
+            f"QFrame#gate_G1 QLabel, QFrame#gate_G2 QLabel {{"
+            f"  background-color: transparent;"
+            f"}}"
+        )
+
+    def _set_led_lamp(self, side: str, state: str) -> None:
+        color = LED_STATE_COLORS.get(state, ACCENT_AMBER)
+        label = self._led_labels[side]
+        label.setText(f"{side}: {state.upper()}")
+        label.setStyleSheet(
+            f"color: {color}; background-color: #0A0F1D; border: 1.5px solid {color}; "
+            f"border-radius: 10px; padding: 4px 8px; font-size: 10px; font-weight: 800; "
+            f"font-family: monospace; letter-spacing: 1px;"
         )
 
 
@@ -600,9 +798,13 @@ class ActivityLogWidget(QFrame):
 
         self._count_badge.setText(f"{self._list.count()} EVENTS")
 
+    def clear_events(self) -> None:
+        self._list.clear()
+        self._count_badge.setText("0 EVENTS")
+
 
 class ControlDeckWidget(QFrame):
-    """Mission control deck with START/PAUSE/STOP buttons and status toggles."""
+    """Mission control deck with START/PAUSE/STOP/RESET buttons and status toggles."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -633,9 +835,15 @@ class ControlDeckWidget(QFrame):
         self.btn_stop.setMinimumWidth(90)
         self.btn_stop.setEnabled(False)
 
+        self.btn_reset = QPushButton("RESET")
+        self.btn_reset.setObjectName("btn_reset")
+        self.btn_reset.setMinimumWidth(90)
+        self.btn_reset.setEnabled(False)
+
         layout.addWidget(self.btn_start)
         layout.addWidget(self.btn_pause)
         layout.addWidget(self.btn_stop)
+        layout.addWidget(self.btn_reset)
         layout.addSpacing(16)
 
         # Indicators
@@ -659,6 +867,7 @@ class ControlDeckWidget(QFrame):
 
         # Session Timer
         self._session_start_time: float | None = None
+        self._elapsed_base = 0.0
         self._timer_label = QLabel("00:00:00")
         self._timer_label.setStyleSheet(
             f"color: {TEXT_PRIMARY}; font-size: 14px; font-weight: 700; "
@@ -672,7 +881,8 @@ class ControlDeckWidget(QFrame):
 
     def set_running_state(self, running: bool, paused: bool = False) -> None:
         if running and not paused:
-            if self._session_start_time is None:
+            if self._session_start_time is None or not self._clock_timer.isActive():
+                # Fresh start or resume from pause: keep accumulated elapsed.
                 self._session_start_time = time.time()
                 self._clock_timer.start(1000)
             self._rec_indicator.setText("RECORDING: [ON]")
@@ -682,6 +892,9 @@ class ControlDeckWidget(QFrame):
                 f"border: 1px solid {ACCENT_RED};"
             )
         elif paused:
+            if self._clock_timer.isActive():
+                self._elapsed_base += time.time() - self._session_start_time
+                self._clock_timer.stop()
             self._rec_indicator.setText("RECORDING: [PAUSED]")
             self._rec_indicator.setStyleSheet(
                 f"color: {ACCENT_AMBER}; font-size: 11px; font-weight: 700; "
@@ -689,9 +902,7 @@ class ControlDeckWidget(QFrame):
                 f"border-radius: 4px; border: 1px solid {ACCENT_AMBER};"
             )
         else:
-            self._session_start_time = None
-            self._clock_timer.stop()
-            self._timer_label.setText("00:00:00")
+            self.reset_timer()
             self._rec_indicator.setText("RECORDING: [OFF]")
             self._rec_indicator.setStyleSheet(
                 f"color: {TEXT_MUTED}; font-size: 11px; font-weight: 700; font-family: monospace; "
@@ -699,9 +910,15 @@ class ControlDeckWidget(QFrame):
                 f"border: 1px solid {BORDER_MUTED};"
             )
 
+    def reset_timer(self) -> None:
+        self._session_start_time = None
+        self._elapsed_base = 0.0
+        self._clock_timer.stop()
+        self._timer_label.setText("00:00:00")
+
     def _on_clock_tick(self) -> None:
         if self._session_start_time is not None:
-            elapsed = int(time.time() - self._session_start_time)
+            elapsed = int(self._elapsed_base + time.time() - self._session_start_time)
             mins, secs = divmod(elapsed, 60)
             hours, mins = divmod(mins, 60)
             self._timer_label.setText(f"{hours:02d}:{mins:02d}:{secs:02d}")
@@ -710,7 +927,8 @@ class ControlDeckWidget(QFrame):
 __all__ = [
     "TelemetryChip",
     "VideoFeedWidget",
-    "StepNavigatorWidget",
+    "ProtocolProgressWidget",
+    "VerificationGatesWidget",
     "ActivityLogWidget",
     "ControlDeckWidget",
 ]

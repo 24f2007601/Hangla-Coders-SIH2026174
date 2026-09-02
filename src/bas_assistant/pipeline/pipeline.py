@@ -15,7 +15,7 @@ from bas_assistant.config.settings import Settings
 from bas_assistant.events.models import EVENT_SESSION_STARTED, Event
 from bas_assistant.models import PoseResult
 from bas_assistant.utils.timing import FPSMeter, LatencyMeter, Metrics, timed
-from bas_assistant.validation.led_estimator import LEDStateEstimator
+from bas_assistant.validation.led_estimator import LEDObservation, LEDStateEstimator
 from bas_assistant.validation.protocol_evidence import confirm_step
 
 logger = logging.getLogger(__name__)
@@ -165,6 +165,35 @@ class ExperimentPipeline:
     def led_state(self) -> dict[str, str]:
         """Latest left/right LED states."""
         return self._led_estimator.state
+
+    @property
+    def led_observation(self) -> LEDObservation:
+        """Latest LED/receiver observation snapshot (read-only view)."""
+        return self._led_estimator.observation
+
+    @property
+    def protocol_state(self) -> dict[str, Any]:
+        """Read-only snapshot of the FSM protocol state."""
+        expected = self._validator.expected_next
+
+        return {
+            "current_index": self._validator.current_index,
+            "done_steps": list(self._validator.done_steps),
+            "expected_next_id": expected.id if expected else None,
+            "expected_next_name": expected.name if expected else None,
+            "is_complete": self._validator.is_complete,
+        }
+
+    @property
+    def frame_number(self) -> int:
+        """Number of frames processed in the current session."""
+        return self._frame_number
+
+    @property
+    def session_id(self) -> str | None:
+        """Identifier of the active session, if one has been started."""
+        session_id = getattr(self._repository, "session_id", None)
+        return session_id or None
 
     def timing_report(self) -> str:
         parts: list[str] = []

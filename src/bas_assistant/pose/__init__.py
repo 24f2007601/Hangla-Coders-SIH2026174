@@ -1,8 +1,8 @@
-"""Pose estimation and normalization."""
+"""Per-frame perception (hand tracking) and pose normalization utilities."""
 
 from bas_assistant.pose.estimation import (
     DummyPoseEstimator,
-    MediaPipePoseEstimator,
+    MediaPipeHandEstimator,
     PoseEstimatorUnavailableError,
 )
 from bas_assistant.pose.normalization import (
@@ -15,7 +15,7 @@ from bas_assistant.pose.normalization import (
 __all__ = [
     "MIN_VISIBLE_KEYPOINTS",
     "DummyPoseEstimator",
-    "MediaPipePoseEstimator",
+    "MediaPipeHandEstimator",
     "NormalizedPose",
     "PoseEstimatorUnavailableError",
     "normalize_pose",

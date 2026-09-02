@@ -10,7 +10,7 @@ import cv2
 
 from bas_assistant.features.extractor import PoseFeatureExtractor
 from bas_assistant.models import PoseResult
-from bas_assistant.pose.estimation import MediaPipePoseEstimator
+from bas_assistant.pose.estimation import MediaPipeHandEstimator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,7 +20,7 @@ VIDEO_ROOT = Path(r"C:\Users\User\Documents\Project\BAS Assistant\Dataset\videos
 
 OUTPUT_ROOT = PROJECT_ROOT / "data" / "processed"
 
-POSE_CONFIDENCE = 0.4
+HAND_CONFIDENCE = 0.4
 
 # Only recover short gaps.
 MAX_GAP_FRAMES = 5
@@ -91,7 +91,7 @@ def interpolate_pose(
 
 def collect_poses(
     video_path: Path,
-    estimator: MediaPipePoseEstimator,
+    estimator: MediaPipeHandEstimator,
 ) -> tuple[list[PoseResult | None], int]:
     """Read every frame and collect the corresponding pose result."""
 
@@ -241,8 +241,8 @@ def process_session(
     if not video_path.exists():
         raise FileNotFoundError(f"Video missing for {session_id}: {video_path}")
 
-    estimator = MediaPipePoseEstimator(
-        min_detection_confidence=POSE_CONFIDENCE,
+    estimator = MediaPipeHandEstimator(
+        min_hand_detection_confidence=HAND_CONFIDENCE,
     )
 
     try:

@@ -7,22 +7,16 @@ camera:
   backend: auto
   disable_dynamic_framerate: false
 
+# Hand-tracking backend (body-pose landmarks are not used by the pipeline).
 pose:
   model: mediapipe
-  pose_model_path: models/pose_landmarker_lite.task
   hand_model_path: models/hand_landmarker.task
-
-  # Lowered from 0.5 after testing the real recordings.
-  min_detection_confidence: 0.3
-
-  min_tracking_confidence: 0.5
 
   min_hand_detection_confidence: 0.3
   min_hand_presence_confidence: 0.4
   min_hand_tracking_confidence: 0.4
 
   hand_hold_seconds: 0.5
-  with_hands: true
 
 classifier:
   model_type: xgboost

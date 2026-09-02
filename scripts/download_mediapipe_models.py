@@ -1,8 +1,9 @@
-"""Download the MediaPipe Tasks API model files needed by the real pose estimator.
+"""Download the MediaPipe Tasks API model file needed by the hand estimator.
 
 The MediaPipe Tasks API (used since the legacy `mp.solutions` API was removed in
-mediapipe 1.0) reads `.task` bundles from disk. This script fetches the pose and
-hand landmarker models into `models/` (gitignored).
+mediapipe 1.0) reads `.task` bundles from disk. This script fetches the hand
+landmarker model into `models/` (gitignored). Body-pose landmarks are not used
+by the pipeline, so no pose landmarker model is needed.
 
 Usage:
     python scripts/download_mediapipe_models.py
@@ -16,10 +17,6 @@ import urllib.request
 from pathlib import Path
 
 MODELS = {
-    "pose_landmarker_lite.task": (
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-        "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
-    ),
     "hand_landmarker.task": (
         "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
         "hand_landmarker/float16/1/hand_landmarker.task"

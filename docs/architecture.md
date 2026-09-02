@@ -76,7 +76,7 @@ The modular pipeline above is **implemented** in `src/bas_assistant/` (see `AGEN
 |---|---|---|
 | Video input | Implemented | OpenCV webcam/file + `DummyVideoSource` |
 | Detection / tracking | Implemented (stub) | Full-frame stub; YOLO fine-tune deferred |
-| Pose estimation | Implemented | MediaPipe (frozen) + `DummyPoseEstimator` fallback |
+| Hand tracking | Implemented | MediaPipe Hands only (frozen) + `DummyPoseEstimator` fallback; body-pose landmarks removed — the fused features use hands + YOLO objects only |
 | Normalization | Implemented | Translation + scale only; orientation-agnostic 3D HMR is **not** claimed |
 | Feature extraction | Implemented | 34-dim spatial + temporal window vector |
 | Step classifier | Implemented (wrapper) | `DummyClassifier` default; `XGBoostStepClassifier` loads a trained model when present — **none trained yet** |
@@ -161,8 +161,8 @@ This makes the representation less dependent on the astronaut's orientation rela
 ### Object detection
 YOLOv8n fine-tuned on ~150–300 labeled frames of experiment props (or Roboflow-hosted). Exports to ONNX for CPU inference. In the PoC this is stubbed; MediaPipe hands + nearest-object heuristics provide the hand-object signals.
 
-### Pose + hands
-MediaPipe Pose (33 landmarks) + MediaPipe Hands (21/hand), pretrained and frozen, CPU real-time.
+### Hand tracking
+MediaPipe Hands (21 landmarks/hand), pretrained and frozen, CPU real-time. Body-pose landmarks were removed: the microphone-protocol features and LED verification gates need only hands + YOLO object detections, so running the pose landmarker wasted latency for no signal.
 
 ### Features
 - **Spatial:** normalized joint coordinates, joint distances, joint angles, limb lengths, relative body geometry.

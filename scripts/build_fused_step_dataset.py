@@ -14,7 +14,7 @@ from bas_assistant.features.microphone import (
     aggregate_window,
     frame_features,
 )
-from bas_assistant.pose.estimation import MediaPipePoseEstimator
+from bas_assistant.pose.estimation import MediaPipeHandEstimator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +38,7 @@ YOLO_MODEL = (
 OUTPUT_ROOT = PROJECT_ROOT / "data" / "processed"
 
 YOLO_CONFIDENCE = 0.25
-POSE_CONFIDENCE = 0.3
+HAND_CONFIDENCE = 0.3
 MAX_POSE_GAP = 8
 
 CLASS_NAMES = {
@@ -135,8 +135,8 @@ def process_video_segment(
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
 
-    estimator = MediaPipePoseEstimator(
-        min_detection_confidence=POSE_CONFIDENCE,
+    estimator = MediaPipeHandEstimator(
+        min_hand_detection_confidence=HAND_CONFIDENCE,
     )
 
     window: list = []

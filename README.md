@@ -2,7 +2,7 @@
 
 An AI-powered autonomous experiment execution and validation assistant for human spaceflight, built for the SIH 2026 ISRO problem statement: *"AI Human Activity Recognition for On-board BAS Experiments."*
 
-The system watches an astronaut perform a predefined experiment protocol through a camera, recognizes which step is being performed using pose estimation and a trained classifier, validates it against the expected sequence using a deterministic FSM, and guides/records the outcome. It follows the loop: **Observe → Understand → Predict → Validate → Guide → Record**.
+The system watches an astronaut perform a predefined experiment protocol through a camera, recognizes which step is being performed using hand tracking, object detection, and a trained classifier, validates it against the expected sequence using a deterministic FSM, and guides/records the outcome. It follows the loop: **Observe → Understand → Predict → Validate → Guide → Record**.
 
 > This is **protocol-aware** step recognition, not generic activity recognition. The system asks: *"What experiment step is happening now, is it valid at this point, and what should happen next?"*
 
@@ -10,10 +10,12 @@ The system watches an astronaut perform a predefined experiment protocol through
 
 ## Features
 
-- Protocol-aware step recognition using MediaPipe pose/hand landmarks + XGBoost classifier
+- Protocol-aware step recognition using MediaPipe hand landmarks + YOLO object features + XGBoost classifier
 - Deterministic FSM sequence validation with skip, repeat, and out-of-sequence detection
-- 7-step toy experiment protocol ("Sample Analysis") for demo and testing
-- PySide6 desktop dashboard with live video, step status, and event log
+- Wireless microphone experiment protocol (M0–M6) with G1/G2 LED verification gates
+- PySide6 mission-control dashboard: live annotated video, full protocol progression,
+  verification-gate panel (G1/G2 badges, receiver LED indicators, receiver detection),
+  telemetry chips, color-coded event log, and START/PAUSE/STOP/RESET session control
 - JSONL session logging for recorded runs
 - Offline/no-camera smoke testing via dummy video sources
 - Camera diagnostics for backend and frame-rate verification
@@ -33,7 +35,7 @@ bas-assistant/
 │   ├── video/                    # Video source handling
 │   ├── detection/                # Person detection (stub)
 │   ├── tracking/                 # Person tracking (stub)
-│   ├── pose/                     # Pose estimation + normalization
+│   ├── pose/                     # Hand tracking (MediaPipe Hands) + normalization utilities
 │   ├── features/                 # Spatial + temporal feature extraction
 │   ├── classification/           # Step classifier (Dummy / XGBoost)
 │   ├── validation/               # FSM sequence validation
@@ -55,7 +57,7 @@ bas-assistant/
 |---|---|
 | Language | Python 3.11+ |
 | Package Manager | `uv` (recommended) or `pip` |
-| Pose + Hands | MediaPipe Pose + Hands (pretrained, frozen) |
+| Hand tracking | MediaPipe Hands (pretrained, frozen) |
 | Step Classifier | XGBoost (scikit-learn) |
 | Sequence Validation | Deterministic FSM (hand-rolled) |
 | GUI | PySide6 |
@@ -135,7 +137,32 @@ python scripts\run_demo.py --source dummy --pose dummy --max-frames 300
 python scripts\run_demo.py --source 0
 
 # Dashboard
-python scripts\run_dashboard.py --source 0
+python scripts\run_dashboard.py --source 0              # webcam 0
+python scripts\run_dashboard.py --source path\video.mp4 # recorded video
+python scripts\run_dashboard.py --source dummy          # offline smoke test
+```
+
+### Dashboard
+
+The PySide6 dashboard is fully wired to the live pipeline — all displayed state
+(steps, gates, LEDs, receiver, protocol completion) comes from the backend via
+public pipeline properties; the UI derives nothing on its own.
+
+Panels:
+
+| Panel | Backend source |
+|---|---|
+| Live video feed | Annotated frame (`utils/visualization.annotate_frame`) |
+| Telemetry chips (status / FPS / persons / latency / events) | `FrameResult` |
+| Protocol progression (M0–M6 + G1/G2 rows: done / active / pending) | FSM `done_steps`, `expected_next`, `gate_status` |
+| Verification gates (G1/G2 badges, left/right LED lamps, receiver status) | `pipeline.gate_status`, `pipeline.led_observation` |
+| Step confidence gauge | XGBoost classification confidence |
+| Activity log (color-coded events incl. gate events) | `EventManager` events |
+| START / PAUSE / STOP / RESET | Pipeline session lifecycle (`start_session`/`end_session` resets FSM, votes, LED history) |
+
+```bash
+# Offline dashboard smoke test (no camera, no models needed)
+uv run python scripts/run_dashboard.py --source dummy --pose dummy --classifier dummy
 ```
 
 ### 5. Verify
@@ -316,7 +343,9 @@ uv run black --check src scripts tests
 | `uv run python scripts/run_pipeline.py --source dummy --pose dummy` | Run headless pipeline |
 | `uv run python scripts/run_demo.py --source dummy --pose dummy` | Run interactive demo |
 | `uv run python scripts/run_demo.py --source 0` | Run with live webcam |
-| `uv run python scripts/run_dashboard.py --source 0` | Launch PySide6 dashboard |
+| `uv run python scripts/run_dashboard.py --source 0` | Launch PySide6 dashboard (webcam) |
+| `uv run python scripts/run_dashboard.py --source <video.mp4>` | Dashboard on a recorded video |
+| `uv run python scripts/run_dashboard.py --source dummy` | Dashboard offline smoke test |
 | `uv run python scripts/camera_diagnostic.py` | Camera diagnostics |
 | `uv run python scripts/download_mediapipe_models.py` | Download MediaPipe models |
 | `uv run pytest` | Run tests |
@@ -352,7 +381,7 @@ Person Detection (stub)
         ↓
 Person Tracking (stub)
         ↓
-Pose Estimation (MediaPipe or dummy)
+Hand Tracking (MediaPipe Hands or dummy)
         ↓
 Pose Normalization (translation + scale)
         ↓
