@@ -1,21 +1,30 @@
-"""Protocol-aware evidence checks for microphone steps."""
+"""Protocol-aware evidence checks for the microphone experiment."""
 
 from __future__ import annotations
 
-MIN_CONFIDENCE = 0.5
-MIN_OBJECT_CONFIDENCE = 0.25
+MIN_CONFIDENCE = 0.25
+MIN_OBJECT_CONFIDENCE = 0.20
 
 
 def _has_object(
     objects: list[dict],
     name: str,
 ) -> bool:
-    """Return True when a sufficiently confident object is present."""
-    return any(
-        str(obj.get("name", "")) == name
-        and float(obj.get("confidence", 0.0)) >= MIN_OBJECT_CONFIDENCE
-        for obj in objects
-    )
+    """Return True when an object is detected confidently enough."""
+
+    for obj in objects:
+        if str(obj.get("name", "")) != name:
+            continue
+
+        try:
+            confidence = float(obj.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        if confidence >= MIN_OBJECT_CONFIDENCE:
+            return True
+
+    return False
 
 
 def confirm_step(
@@ -24,7 +33,13 @@ def confirm_step(
     current_index: int,
     objects: list[dict],
 ) -> str | None:
-    """Confirm the next protocol step using classifier/object evidence."""
+    """Confirm only the next expected step.
+
+    XGBoost is the primary temporal step signal.
+    Object detection provides permissive supporting evidence.
+
+    The gate never allows a later step to advance the FSM.
+    """
 
     expected_index = current_index + 1
 
@@ -33,27 +48,19 @@ def confirm_step(
 
     expected_step = f"M{expected_index}"
 
-    # ---------------------------------------------------------
-    # M0 / M1
-    # ---------------------------------------------------------
-    #
-    # These steps do not currently have sufficiently distinctive
-    # object evidence, so require a confident classifier result.
-    #
-    if expected_step in {"M0", "M1"}:
-        if confidence < MIN_CONFIDENCE:
-            return None
+    # --------------------------------------------------------------
+    # Primary classifier signal
+    # --------------------------------------------------------------
 
-        return expected_step if candidate == expected_step else None
+    if candidate == expected_step and confidence >= MIN_CONFIDENCE:
+        return expected_step
 
-    # ---------------------------------------------------------
-    # M2
-    # ---------------------------------------------------------
+    # --------------------------------------------------------------
+    # Object-supported fallback
     #
-    # A closed microphone case is strong direct evidence.
-    # Allow that evidence to confirm M2 even when the classifier
-    # itself is uncertain.
-    #
+    # These are deliberately limited to visually meaningful states.
+    # --------------------------------------------------------------
+
     if expected_step == "M2":
         if _has_object(
             objects,
@@ -61,34 +68,14 @@ def confirm_step(
         ):
             return "M2"
 
-        if confidence >= MIN_CONFIDENCE and candidate == "M2":
-            return "M2"
-
-        return None
-
-    # ---------------------------------------------------------
-    # M3
-    # ---------------------------------------------------------
-    #
-    # Opening the microphone case is directly observable.
-    #
-    if expected_step == "M3":
+    elif expected_step == "M3":
         if _has_object(
             objects,
             "microphone_case_open",
         ):
             return "M3"
 
-        return None
-
-    # ---------------------------------------------------------
-    # M4
-    # ---------------------------------------------------------
-    #
-    # An open case with the receiver present is strong evidence
-    # for the receiver-removal stage.
-    #
-    if expected_step == "M4":
+    elif expected_step == "M4":
         if _has_object(
             objects,
             "microphone_case_open",
@@ -98,61 +85,18 @@ def confirm_step(
         ):
             return "M4"
 
-        return None
-
-    # ---------------------------------------------------------
-    # M5
-    # ---------------------------------------------------------
-    #
-    # M4 and M5 have very similar static object states.
-    # Therefore M5 still requires an explicit classifier signal
-    # in addition to the receiver/case evidence.
-    #
-    if expected_step == "M5":
-        if (
-            candidate == "M5"
-            and confidence >= MIN_CONFIDENCE
-            and _has_object(
-                objects,
-                "microphone_case_open",
-            )
-            and _has_object(
-                objects,
-                "receiver",
-            )
-        ):
-            return "M5"
-
-        return None
-
-    # ---------------------------------------------------------
-    # M6
-    # ---------------------------------------------------------
-    #
-    # Microphone presence provides the distinguishing object
-    # evidence for microphone removal.
-    #
-    if expected_step == "M6":
-        if (
-            (
-                candidate == "M6"
-                or _has_object(
-                    objects,
-                    "microphone",
-                )
-            )
-            and _has_object(
-                objects,
-                "microphone_case_open",
-            )
-            and _has_object(
-                objects,
-                "receiver",
-            )
-        ):
-            return "M6"
-
-        return None
+    elif (
+        expected_step == "M6"
+        and _has_object(
+            objects,
+            "microphone",
+        )
+        and _has_object(
+            objects,
+            "microphone_case_open",
+        )
+    ):
+        return "M6"
 
     return None
 

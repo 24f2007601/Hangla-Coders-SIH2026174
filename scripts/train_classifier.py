@@ -16,9 +16,7 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 
-from bas_assistant.features.microphone import (
-    MICROPHONE_FEATURE_VECTOR_SIZE,
-)
+from bas_assistant.features.microphone import MICROPHONE_FEATURE_VECTOR_SIZE
 
 DATA_ROOT = Path("data/processed")
 
@@ -135,7 +133,7 @@ def main() -> None:
     # ---------------------------------------------------------
 
     if train_X.shape[1] != MICROPHONE_FEATURE_VECTOR_SIZE:
-        raise ValueError("Unexpected train feature count: " f"{train_X.shape[1]}")
+        raise ValueError(f"Unexpected train feature count: {train_X.shape[1]}")
 
     if val_X.shape[1] != train_X.shape[1]:
         raise ValueError("Train/validation feature mismatch")
@@ -157,11 +155,6 @@ def main() -> None:
         for class_id, count in class_counts.items()
     }
 
-    sample_weights = np.asarray(
-        [class_weights[class_id] for class_id in y_train],
-        dtype=float,
-    )
-
     print()
     print("Training class distribution")
     print("-" * 60)
@@ -177,7 +170,7 @@ def main() -> None:
             0.0,
         )
 
-        print(f"{label:>3} : " f"{count:>4} samples | " f"weight={weight:.3f}")
+        print(f"{label:>3} : {count:>4} samples | weight={weight:.3f}")
 
     # ---------------------------------------------------------
     # Model
@@ -208,7 +201,6 @@ def main() -> None:
     model.fit(
         train_X,
         y_train,
-        sample_weight=sample_weights,
         eval_set=[
             (train_X, y_train),
             (val_X, y_val),
@@ -249,11 +241,11 @@ def main() -> None:
         print(f"{name.upper()} RESULTS")
         print("=" * 60)
 
-        print(f"Accuracy          : " f"{accuracy:.4f}")
+        print(f"Accuracy          : {accuracy:.4f}")
 
-        print(f"Macro F1          : " f"{macro_f1:.4f}")
+        print(f"Macro F1          : {macro_f1:.4f}")
 
-        print(f"Balanced Accuracy : " f"{balanced_accuracy:.4f}")
+        print(f"Balanced Accuracy : {balanced_accuracy:.4f}")
 
         print()
 

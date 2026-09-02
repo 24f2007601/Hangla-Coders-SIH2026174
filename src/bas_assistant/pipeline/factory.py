@@ -51,7 +51,7 @@ def build_pipeline(settings: Settings) -> ExperimentPipeline:
         classifier = DummyClassifier()
 
     object_detector = YOLOMicrophoneDetector(
-        model_path=Path("runs/detect/runs/microphone_yolo/" "baseline-2/weights/best.pt"),
+        model_path=Path("runs/detect/runs/microphone_yolo/baseline-2/weights/best.pt"),
         confidence=0.25,
         device=0,
     )

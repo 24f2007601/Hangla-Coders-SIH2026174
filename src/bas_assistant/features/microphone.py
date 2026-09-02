@@ -82,10 +82,38 @@ FRAME_FEATURE_NAMES = (
     "right_to_phone",
 )
 
+PHONE_X_INDEX = FRAME_FEATURE_NAMES.index("phone_x")
+PHONE_Y_INDEX = FRAME_FEATURE_NAMES.index("phone_y")
+PHONE_PRESENT_INDEX = FRAME_FEATURE_NAMES.index("phone_present")
+LEFT_TO_PHONE_INDEX = FRAME_FEATURE_NAMES.index("left_to_phone")
+RIGHT_TO_PHONE_INDEX = FRAME_FEATURE_NAMES.index("right_to_phone")
+
+ENGINEERED_WINDOW_FEATURE_NAMES = (
+    "phone_displacement",
+    "phone_dx",
+    "phone_dy",
+    "left_phone_approach_delta",
+    "right_phone_approach_delta",
+    "left_phone_min_distance",
+    "right_phone_min_distance",
+    "phone_presence_changes",
+)
+
+WINDOW_STATISTICS = (
+    "mean",
+    "std",
+    "first",
+    "last",
+    "delta",
+    "min",
+    "max",
+    "range",
+)
+
 
 WINDOW_FEATURE_NAMES = (
-    *(f"{name}_mean" for name in FRAME_FEATURE_NAMES),
-    *(f"{name}_std" for name in FRAME_FEATURE_NAMES),
+    tuple(f"{name}_{statistic}" for name in FRAME_FEATURE_NAMES for statistic in WINDOW_STATISTICS)
+    + ENGINEERED_WINDOW_FEATURE_NAMES
 )
 
 
@@ -130,8 +158,6 @@ def _extract_hand_centers(
         if len(keypoints) != 21:
             continue
 
-        # Palm center = average of wrist + MCP joints.
-        # Indices: wrist=0, MCPs=5,9,13,17.
         selected = [
             keypoints[0],
             keypoints[5],
@@ -211,8 +237,13 @@ def frame_features(
         ]
         | None
     ),
-) -> tuple[np.ndarray, tuple[tuple[float, float] | None, tuple[float, float] | None]]:
-
+) -> tuple[
+    np.ndarray,
+    tuple[
+        tuple[float, float] | None,
+        tuple[float, float] | None,
+    ],
+]:
     left_hand, right_hand = _extract_hand_centers(
         pose,
         width,
@@ -243,7 +274,6 @@ def frame_features(
         right_vy = 0.0
 
     left_speed = float(np.hypot(left_vx, left_vy))
-
     right_speed = float(np.hypot(right_vx, right_vy))
 
     hand_distance = (
@@ -289,8 +319,6 @@ def frame_features(
 
     microphone_point = (microphone.center_x, microphone.center_y) if microphone.present else None
 
-    case_point = None
-
     if case_open.present:
         case_point = (
             case_open.center_x,
@@ -301,6 +329,8 @@ def frame_features(
             case_closed.center_x,
             case_closed.center_y,
         )
+    else:
+        case_point = None
 
     phone_point = (phone.center_x, phone.center_y) if phone.present else None
 
@@ -392,7 +422,10 @@ def frame_features(
         ),
     ]
 
-    return np.asarray(values, dtype=float), (left_hand, right_hand)
+    return (
+        np.asarray(values, dtype=float),
+        (left_hand, right_hand),
+    )
 
 
 def aggregate_window(
@@ -403,31 +436,99 @@ def aggregate_window(
 
     matrix = np.stack(frames)
 
+    mean = matrix.mean(axis=0)
+    std = matrix.std(axis=0)
+    first = matrix[0]
+    last = matrix[-1]
+    delta = last - first
+    minimum = matrix.min(axis=0)
+    maximum = matrix.max(axis=0)
+    value_range = maximum - minimum
+
+    # ---------------------------------------------------------
+    # Explicit phone-interaction features
+    # ---------------------------------------------------------
+    phone_present = matrix[:, PHONE_PRESENT_INDEX] > 0.5
+
+    valid_phone = matrix[phone_present]
+
+    if len(valid_phone) >= 2:
+        phone_dx = valid_phone[-1, PHONE_X_INDEX] - valid_phone[0, PHONE_X_INDEX]
+
+        phone_dy = valid_phone[-1, PHONE_Y_INDEX] - valid_phone[0, PHONE_Y_INDEX]
+
+        phone_displacement = float(np.hypot(phone_dx, phone_dy))
+
+        left_phone_values = valid_phone[:, LEFT_TO_PHONE_INDEX]
+        right_phone_values = valid_phone[:, RIGHT_TO_PHONE_INDEX]
+
+        left_phone_approach_delta = float(left_phone_values[-1] - left_phone_values[0])
+
+        right_phone_approach_delta = float(right_phone_values[-1] - right_phone_values[0])
+
+        left_phone_min_distance = float(left_phone_values.min())
+
+        right_phone_min_distance = float(right_phone_values.min())
+
+    elif len(valid_phone) == 1:
+        phone_dx = 0.0
+        phone_dy = 0.0
+        phone_displacement = 0.0
+
+        left_phone_approach_delta = 0.0
+        right_phone_approach_delta = 0.0
+
+        left_phone_min_distance = float(valid_phone[0, LEFT_TO_PHONE_INDEX])
+
+        right_phone_min_distance = float(valid_phone[0, RIGHT_TO_PHONE_INDEX])
+
+    else:
+        phone_dx = 0.0
+        phone_dy = 0.0
+        phone_displacement = 0.0
+        left_phone_approach_delta = 0.0
+        right_phone_approach_delta = 0.0
+        left_phone_min_distance = 0.0
+        right_phone_min_distance = 0.0
+
+    phone_presence_changes = float(np.abs(np.diff(phone_present.astype(float))).sum())
+
+    engineered = np.asarray(
+        [
+            phone_displacement,
+            phone_dx,
+            phone_dy,
+            left_phone_approach_delta,
+            right_phone_approach_delta,
+            left_phone_min_distance,
+            right_phone_min_distance,
+            phone_presence_changes,
+        ],
+        dtype=float,
+    )
+
     return np.concatenate(
         [
-            matrix.mean(axis=0),
-            matrix.std(axis=0),
+            mean,
+            std,
+            first,
+            last,
+            delta,
+            minimum,
+            maximum,
+            value_range,
+            engineered,
         ]
     )
 
 
-__all__ = [
-    "FRAME_FEATURE_NAMES",
-    "WINDOW_FEATURE_NAMES",
-    "MICROPHONE_FEATURE_VECTOR_SIZE",
-    "frame_features",
-    "aggregate_window",
-]
-
-
 class MicrophoneFeatureExtractor:
-    """Runtime 102-feature extractor for the microphone protocol.
+    """Runtime 408-feature extractor for the microphone protocol."""
 
-    YOLO detections are attached to PoseResult.metadata["objects"]
-    by the pipeline before this extractor is called.
-    """
-
-    def __init__(self, sequence_length: int = 30) -> None:
+    def __init__(
+        self,
+        sequence_length: int = 30,
+    ) -> None:
         self._window = FeatureWindow[np.ndarray](sequence_length)
         self._last_hands = None
         self._ready = False
@@ -445,8 +546,11 @@ class MicrophoneFeatureExtractor:
         self._last_hands = None
         self._ready = False
 
-    def push(self, pose: PoseResult) -> bool:
-        """Add one pose carrying YOLO detections in its metadata."""
+    def push(
+        self,
+        pose: PoseResult,
+    ) -> bool:
+        """Add one pose carrying YOLO detections."""
 
         objects = pose.metadata.get(
             "objects",
@@ -469,8 +573,6 @@ class MicrophoneFeatureExtractor:
                 1,
             )
 
-        # Runtime frames normally contain the original frame dimensions
-        # in metadata. Fall back safely if unavailable.
         width = int(
             pose.metadata.get(
                 "frame_width",
@@ -502,13 +604,22 @@ class MicrophoneFeatureExtractor:
 
     def features(self) -> np.ndarray:
         if not self._ready:
-            raise ValueError("feature window not full; " "call push() until it returns True")
+            raise ValueError("feature window not full; call push() until it returns True")
 
         return aggregate_window(list(self._window.items()))
 
     @property
-    def feature_names(self) -> tuple[str, ...]:
+    def feature_names(
+        self,
+    ) -> tuple[str, ...]:
         return WINDOW_FEATURE_NAMES
 
 
-__all__.append("MicrophoneFeatureExtractor")
+__all__ = [
+    "FRAME_FEATURE_NAMES",
+    "WINDOW_FEATURE_NAMES",
+    "MICROPHONE_FEATURE_VECTOR_SIZE",
+    "frame_features",
+    "aggregate_window",
+    "MicrophoneFeatureExtractor",
+]

@@ -10,7 +10,6 @@ import cv2
 from ultralytics import YOLO
 
 from bas_assistant.features.microphone import (
-    FRAME_FEATURE_NAMES,
     MICROPHONE_FEATURE_VECTOR_SIZE,
     aggregate_window,
     frame_features,
@@ -20,8 +19,10 @@ from bas_assistant.pose.estimation import MediaPipePoseEstimator
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 SESSION_CSV = PROJECT_ROOT / "data" / "annotations" / "sessions.csv"
+STEPS_CSV = PROJECT_ROOT / "data" / "annotations" / "steps.csv"
 
 VIDEO_ROOT = Path(r"C:\Users\User\Documents\Project\BAS Assistant\Dataset\videos")
+RESHOOT_ROOT = Path(r"C:\Users\User\Documents\Project\BAS Assistant\Dataset\reshoot")
 
 YOLO_MODEL = (
     PROJECT_ROOT
@@ -38,6 +39,7 @@ OUTPUT_ROOT = PROJECT_ROOT / "data" / "processed"
 
 YOLO_CONFIDENCE = 0.25
 POSE_CONFIDENCE = 0.3
+MAX_POSE_GAP = 8
 
 CLASS_NAMES = {
     0: "microphone",
@@ -49,20 +51,37 @@ CLASS_NAMES = {
 
 
 def load_sessions() -> list[dict[str, str]]:
-    with SESSION_CSV.open(
-        "r",
-        newline="",
-        encoding="utf-8",
-    ) as file:
+    with SESSION_CSV.open("r", newline="", encoding="utf-8") as file:
         return list(csv.DictReader(file))
 
 
-def predict_objects(
-    model: YOLO,
-    frame,
-) -> list[dict]:
-    """Return normalized YOLO detections in a model-independent format."""
+def load_reshoot_labels() -> dict[str, list[dict[str, int | str]]]:
+    labels: dict[str, list[dict[str, int | str]]] = {}
 
+    with STEPS_CSV.open("r", newline="", encoding="utf-8") as file:
+        for row in csv.DictReader(file):
+            session_id = row["session_id"]
+
+            labels.setdefault(session_id, []).append(
+                {
+                    "start_frame": int(row["start_frame"]),
+                    "end_frame": int(row["end_frame"]),
+                    "label": row["label"],
+                }
+            )
+
+    return labels
+
+
+def reshoot_split(session_id: str) -> str:
+    if session_id.endswith("_v4"):
+        return "val"
+    if session_id.endswith("_v5"):
+        return "test"
+    return "train"
+
+
+def predict_objects(model: YOLO, frame) -> list[dict]:
     result = model.predict(
         source=frame,
         conf=YOLO_CONFIDENCE,
@@ -86,45 +105,35 @@ def predict_objects(
                 "class_id": class_id,
                 "name": CLASS_NAMES[class_id],
                 "confidence": float(box.conf.item()),
-                "xyxy": [float(value) for value in box.xyxy[0].tolist()],
+                "xyxy": [float(v) for v in box.xyxy[0].tolist()],
             }
         )
 
     return detections
 
 
-def process_session(
-    session: dict[str, str],
+def feature_names() -> list[str]:
+    from bas_assistant.features.microphone import WINDOW_FEATURE_NAMES
+
+    return list(WINDOW_FEATURE_NAMES)
+
+
+def process_video_segment(
+    *,
+    session_id: str,
+    split: str,
+    label: str,
+    video_path: Path,
+    start_frame: int,
+    end_frame: int,
     model: YOLO,
     sequence_length: int,
     hop: int,
-) -> tuple[list[str], list[list[object]]]:
-
-    session_id = session["session_id"]
-    split = session["split"]
-    scenario = session["scenario"]
-
-    if not scenario.startswith("step_"):
-        raise ValueError(f"Unexpected scenario for {session_id}: {scenario}")
-
-    label = scenario.removeprefix("step_")
-
-    video_name = Path(session["video_path"]).name
-
-    video_path = VIDEO_ROOT / video_name
-
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video missing for {session_id}: {video_path}")
-
+) -> list[list[object]]:
     cap = cv2.VideoCapture(str(video_path))
 
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-
-    if fps <= 0:
-        fps = 30.0
 
     estimator = MediaPipePoseEstimator(
         min_detection_confidence=POSE_CONFIDENCE,
@@ -133,32 +142,69 @@ def process_session(
     window: list = []
     rows: list[list[object]] = []
 
-    frame_count = 0
-    pose_frames = 0
-    fused_frames = 0
+    previous_hands = None
+    last_valid_features = None
+    pose_gap = 0
     window_count = 0
 
-    previous_hands = None
-
     try:
-        while True:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
+        current_frame = start_frame
+
+        while current_frame <= end_frame:
             ok, frame = cap.read()
 
             if not ok:
                 break
 
-            frame_count += 1
-
             pose = estimator.estimate(frame)
 
+            # -------------------------------------------------
+            # Short MediaPipe gap: reuse previous valid feature.
+            # Long gap: reset temporal continuity.
+            # -------------------------------------------------
             if pose is None:
-                # A missing pose breaks temporal continuity.
-                window.clear()
-                previous_hands = None
+                pose_gap += 1
+
+                if last_valid_features is not None and pose_gap <= MAX_POSE_GAP:
+                    window.append(last_valid_features)
+
+                    if len(window) >= sequence_length:
+                        if window_count % hop == 0:
+                            aggregate = aggregate_window(window[-sequence_length:])
+
+                            if aggregate.shape[0] != MICROPHONE_FEATURE_VECTOR_SIZE:
+                                raise RuntimeError(
+                                    "Unexpected microphone feature size: "
+                                    f"{aggregate.shape[0]} "
+                                    f"(expected "
+                                    f"{MICROPHONE_FEATURE_VECTOR_SIZE})"
+                                )
+
+                            rows.append(
+                                [
+                                    session_id,
+                                    split,
+                                    label,
+                                    current_frame,
+                                    *aggregate.tolist(),
+                                ]
+                            )
+
+                        window_count += 1
+
+                else:
+                    window.clear()
+                    previous_hands = None
+                    last_valid_features = None
+                    window_count = 0
+
+                current_frame += 1
                 continue
 
-            pose_frames += 1
+            # Valid pose recovered.
+            pose_gap = 0
 
             height, width = frame.shape[:2]
 
@@ -176,69 +222,137 @@ def process_session(
             )
 
             previous_hands = current_hands
-
+            last_valid_features = features
             window.append(features)
-            fused_frames += 1
 
-            if len(window) < sequence_length:
-                continue
+            if len(window) >= sequence_length:
+                if window_count % hop == 0:
+                    aggregate = aggregate_window(window[-sequence_length:])
 
-            window_count += 1
+                    if aggregate.shape[0] != MICROPHONE_FEATURE_VECTOR_SIZE:
+                        raise RuntimeError(
+                            "Unexpected microphone feature size: "
+                            f"{aggregate.shape[0]} "
+                            f"(expected "
+                            f"{MICROPHONE_FEATURE_VECTOR_SIZE})"
+                        )
 
-            if (window_count - 1) % hop == 0:
-
-                aggregate = aggregate_window(window[-sequence_length:])
-
-                if aggregate.shape[0] != MICROPHONE_FEATURE_VECTOR_SIZE:
-                    raise RuntimeError(
-                        "Unexpected microphone feature size: "
-                        f"{aggregate.shape[0]} "
-                        f"(expected "
-                        f"{MICROPHONE_FEATURE_VECTOR_SIZE})"
+                    rows.append(
+                        [
+                            session_id,
+                            split,
+                            label,
+                            current_frame,
+                            *aggregate.tolist(),
+                        ]
                     )
 
-                rows.append(
-                    [
-                        session_id,
-                        split,
-                        label,
-                        frame_count - 1,
-                        *aggregate.tolist(),
-                    ]
-                )
+                window_count += 1
+
+            current_frame += 1
 
     finally:
         cap.release()
 
-        close = getattr(
-            estimator,
-            "close",
-            None,
-        )
+        close = getattr(estimator, "close", None)
 
         if callable(close):
             close()
 
-    feature_names = [f"{name}_mean" for name in FRAME_FEATURE_NAMES] + [
-        f"{name}_std" for name in FRAME_FEATURE_NAMES
-    ]
+    return rows
 
-    print(
-        f"{session_id}: "
-        f"frames={frame_count}, "
-        f"pose={pose_frames}, "
-        f"fused={fused_frames}, "
-        f"windows={len(rows)}"
+
+def process_old_session(
+    session: dict[str, str],
+    model: YOLO,
+    sequence_length: int,
+    hop: int,
+) -> list[list[object]]:
+    """Process original isolated step recordings."""
+    session_id = session["session_id"]
+    split = session["split"]
+    scenario = session["scenario"]
+
+    if not scenario.startswith("step_"):
+        raise ValueError(f"Unexpected scenario for {session_id}: {scenario}")
+
+    label = scenario.removeprefix("step_")
+    video_name = Path(session["video_path"]).name
+    video_path = VIDEO_ROOT / video_name
+
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video missing for {session_id}: {video_path}")
+
+    cap = cv2.VideoCapture(str(video_path))
+
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open video: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+
+    rows = process_video_segment(
+        session_id=session_id,
+        split=split,
+        label=label,
+        video_path=video_path,
+        start_frame=0,
+        end_frame=total_frames - 1,
+        model=model,
+        sequence_length=sequence_length,
+        hop=hop,
     )
 
-    return feature_names, rows
+    print(f"{session_id}: label={label}, windows={len(rows)}")
+
+    return rows
+
+
+def process_reshoot(
+    session_id: str,
+    segments: list[dict[str, int | str]],
+    model: YOLO,
+    sequence_length: int,
+    hop: int,
+) -> tuple[str, list[list[object]]]:
+    video_path = RESHOOT_ROOT / f"{session_id}.mp4"
+
+    if not video_path.exists():
+        raise FileNotFoundError(f"Reshoot video missing: {video_path}")
+
+    split = reshoot_split(session_id)
+    rows: list[list[object]] = []
+
+    for segment in segments:
+        label = str(segment["label"])
+
+        segment_rows = process_video_segment(
+            session_id=session_id,
+            split=split,
+            label=label,
+            video_path=video_path,
+            start_frame=int(segment["start_frame"]),
+            end_frame=int(segment["end_frame"]),
+            model=model,
+            sequence_length=sequence_length,
+            hop=hop,
+        )
+
+        rows.extend(segment_rows)
+
+        print(
+            f"{session_id}: "
+            f"{label} "
+            f"frames={segment['start_frame']}-"
+            f"{segment['end_frame']} "
+            f"windows={len(segment_rows)}"
+        )
+
+    return split, rows
 
 
 def main() -> None:
-
-    parser = argparse.ArgumentParser(
-        description=("Build fused hand + YOLO temporal " "features for XGBoost.")
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--sequence-length",
@@ -257,9 +371,20 @@ def main() -> None:
     if not YOLO_MODEL.exists():
         raise FileNotFoundError(f"YOLO model not found: {YOLO_MODEL}")
 
+    model = YOLO(str(YOLO_MODEL))
+
+    grouped: dict[str, list[list[object]]] = {
+        "train": [],
+        "val": [],
+        "test": [],
+    }
+
+    names = feature_names()
+
+    # Original isolated training clips.
     sessions = load_sessions()
 
-    step_sessions = [
+    old_step_sessions = [
         session
         for session in sessions
         if session["session_id"].startswith(
@@ -273,39 +398,32 @@ def main() -> None:
                 "M6_",
             )
         )
+        and session["split"] == "train"
     ]
 
-    if len(step_sessions) != 35:
-        raise RuntimeError(f"Expected 35 step sessions, found {len(step_sessions)}")
+    for session in old_step_sessions:
+        grouped["train"].extend(
+            process_old_session(
+                session=session,
+                model=model,
+                sequence_length=args.sequence_length,
+                hop=args.hop,
+            )
+        )
 
-    model = YOLO(str(YOLO_MODEL))
+    # New continuous recordings.
+    reshoot_labels = load_reshoot_labels()
 
-    grouped: dict[str, list[list[object]]] = {
-        "train": [],
-        "val": [],
-        "test": [],
-    }
-
-    feature_names: list[str] | None = None
-
-    for session in step_sessions:
-
-        names, rows = process_session(
-            session=session,
+    for session_id, segments in sorted(reshoot_labels.items()):
+        split, rows = process_reshoot(
+            session_id=session_id,
+            segments=segments,
             model=model,
             sequence_length=args.sequence_length,
             hop=args.hop,
         )
 
-        if feature_names is None:
-            feature_names = names
-
-        elif feature_names != names:
-            raise RuntimeError("Feature schema changed between sessions")
-
-        grouped[session["split"]].extend(rows)
-
-    assert feature_names is not None
+        grouped[split].extend(rows)
 
     OUTPUT_ROOT.mkdir(
         parents=True,
@@ -317,11 +435,10 @@ def main() -> None:
         "split",
         "label",
         "frame",
-        *feature_names,
+        *names,
     ]
 
     for split, rows in grouped.items():
-
         output_path = OUTPUT_ROOT / f"fused_step_features_{split}.csv"
 
         with output_path.open(
@@ -329,7 +446,6 @@ def main() -> None:
             newline="",
             encoding="utf-8",
         ) as file:
-
             writer = csv.writer(file)
             writer.writerow(header)
             writer.writerows(rows)
@@ -338,9 +454,9 @@ def main() -> None:
         print("=" * 60)
         print(split.upper())
         print("=" * 60)
-        print(f"Sessions : " f"{len({row[0] for row in rows})}")
+        print(f"Sessions : {len({row[0] for row in rows})}")
         print(f"Windows  : {len(rows)}")
-        print(f"Features : " f"{len(feature_names)}")
+        print(f"Features : {len(names)}")
         print(f"Output   : {output_path}")
 
 
