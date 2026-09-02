@@ -180,6 +180,8 @@ The Streamlit dashboard (`streamlit_app.py`) provides a web-deployable version o
 uv run streamlit run streamlit_app.py
 ```
 
+For full cloud, Docker, and WebRTC setup instructions, refer to the [Streamlit Deployment Guide](docs/streamlit-deployment-guide.md).
+
 ### 5. Verify
 
 ```powershell
