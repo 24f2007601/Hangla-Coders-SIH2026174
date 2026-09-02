@@ -1,4 +1,4 @@
-﻿# BAS Experiment Assistant
+# BAS Experiment Assistant
 
 An AI-powered autonomous experiment execution and validation assistant for human spaceflight, built for the SIH 2026 ISRO problem statement: *"AI Human Activity Recognition for On-board BAS Experiments."*
 
@@ -28,24 +28,30 @@ The system watches an astronaut perform a predefined experiment protocol through
 bas-assistant/
 ├── configs/default.yaml          # Typed Pydantic config
 ├── data/                         # raw/, processed/, samples/
-├── models/                       # Trained artifacts (.onnx/.json) — gitignored
-├── scripts/                      # Entry points (run_pipeline, run_demo, etc.)
-├── src/bas_assistant/            # Main package
+├── docs/                         # ADRs, architecture, runbooks, GPU guides
+├── models/                       # Trained artifacts (.task/.json)
+├── runs/                         # Model training checkpoints & evaluation curves
+├── scripts/                      # Entry points (run_pipeline, run_demo, run_dashboard)
+├── src/bas_assistant/            # Main core package
 │   ├── pipeline/                 # Frame processing orchestration
 │   ├── video/                    # Video source handling
-│   ├── detection/                # Person detection (stub)
-│   ├── tracking/                 # Person tracking (stub)
-│   ├── pose/                     # Hand tracking (MediaPipe Hands) + normalization utilities
+│   ├── detection/                # Person & object detection (YOLO)
+│   ├── tracking/                 # Person tracking
+│   ├── pose/                     # Hand tracking (MediaPipe Hands)
 │   ├── features/                 # Spatial + temporal feature extraction
 │   ├── classification/           # Step classifier (Dummy / XGBoost)
-│   ├── validation/               # FSM sequence validation
+│   ├── validation/               # Deterministic FSM sequence validation
 │   ├── events/                   # Event manager
 │   ├── storage/                  # JSONL session logs
-│   ├── ui/                       # PySide6 dashboard
-│   └── utils/                    # Shared utilities
-├── tests/                        # Unit + integration tests
-├── docs/                         # ADRs, architecture, standards
-├── train/                        # Training scripts/data
+│   ├── ui/                       # Presentation layers (PySide6 Desktop & Streamlit)
+│   │   ├── dashboard.py          # PySide6 Mission Control desktop UI
+│   │   └── streamlit/            # Streamlit web presentation components & tabs
+│   └── utils/                    # Shared visualization & logging utilities
+├── tests/                        # Unit + integration tests (114 passing)
+├── weights/                      # Base pretrained model weights (.pt)
+├── streamlit_app.py              # Streamlit Web Mission Control app entrypoint
+├── requirements.txt              # Cloud deployment dependencies
+├── packages.txt                  # Linux OS system dependencies
 └── pyproject.toml                # Build config (hatchling)
 ```
 
@@ -163,6 +169,15 @@ Panels:
 ```bash
 # Offline dashboard smoke test (no camera, no models needed)
 uv run python scripts/run_dashboard.py --source dummy --pose dummy --classifier dummy
+```
+
+### Streamlit Web Dashboard (Browser & Cloud)
+
+The Streamlit dashboard (`streamlit_app.py`) provides a web-deployable version of the Space Mission Control UI with live video playback, WebRTC browser streaming, training evaluation curves, and interactive FSM architecture diagrams:
+
+```bash
+# Run local Streamlit web dashboard
+uv run streamlit run streamlit_app.py
 ```
 
 ### 5. Verify
