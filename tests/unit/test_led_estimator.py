@@ -117,7 +117,9 @@ def test_pipeline_holds_m5_and_m6_until_their_led_gates_pass(tmp_path) -> None:
     for _ in range(4):
         pipeline.process_frame(frame)
     assert pipeline._m6_pending is True  # noqa: SLF001
-    assert [event.type for event in pipeline._event_manager.events].count("gate_g2_pending") == 1  # noqa: SLF001
+    assert [event.type for event in pipeline._event_manager.events].count(
+        "gate_g2_pending"
+    ) == 1  # noqa: SLF001
 
     gate_estimator.g2_passed = True
     g2_result = pipeline.process_frame(frame)
